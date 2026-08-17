@@ -5,7 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from data import APTITUDE_CATEGORIES, FACULTY_RULES, FUNCTION_ORDER, MBTI_STACKS, UNIVERSITY_OPTIONS
+from data import (
+    APTITUDE_CATEGORIES,
+    BUDGET_DETAILS,
+    BUDGET_LABELS,
+    FACULTY_RULES,
+    FINANCE_GUIDANCE,
+    FUNCTION_ORDER,
+    MBTI_STACKS,
+    UNIVERSITY_OPTIONS,
+)
 
 
 @dataclass(frozen=True)
@@ -113,7 +122,46 @@ def university_options(group: str, budget: str) -> list[dict[str, str]]:
     return options
 
 
+def financial_summary(
+    budget: str,
+    career_goal: str,
+    financial_urgency: str,
+    bonded_scholarship: str,
+    travel_constraint: str,
+) -> dict:
+    """สร้างบทสรุปการบริหารและการเงินจากคำตอบทั้ง 5 ข้อของผู้ใช้."""
+    if budget not in BUDGET_DETAILS:
+        raise ValueError("ไม่พบระดับงบประมาณ")
+
+    selections = {
+        "เป้าหมายหลังเรียนจบ": (career_goal, FINANCE_GUIDANCE["career_goal"]),
+        "ภาระหลังเรียนจบ": (financial_urgency, FINANCE_GUIDANCE["financial_urgency"]),
+        "ทุนแบบมีเงื่อนไขผูกพัน": (bonded_scholarship, FINANCE_GUIDANCE["bonded_scholarship"]),
+        "ข้อจำกัดเรื่องที่อยู่/การเดินทาง": (travel_constraint, FINANCE_GUIDANCE["travel_constraint"]),
+    }
+    decisions = [
+        {"topic": topic, "answer": answer, "guidance": guidance[answer]}
+        for topic, (answer, guidance) in selections.items()
+    ]
+    budget_detail = BUDGET_DETAILS[budget]
+    actions = [
+        f"ตั้งงบค่าเทอม: {budget_detail['tuition_range']}",
+        budget_detail["planning_focus"],
+        budget_detail["funding_hint"],
+        "ทำตารางค่าใช้จ่ายตลอดหลักสูตร โดยแยกค่าเทอม ค่าที่พัก/เดินทาง ค่าครองชีพ และค่าอุปกรณ์",
+    ]
+    return {
+        "budget": budget,
+        "budget_label": BUDGET_LABELS[budget],
+        "tuition_range": budget_detail["tuition_range"],
+        "planning_focus": budget_detail["planning_focus"],
+        "decisions": decisions,
+        "actions": actions,
+    }
+
+
 def logic_expression(rule: Mapping) -> str:
     mbti_term = " ∨ ".join(rule["mbti_set"])
     subject_term = " ∧ ".join(f"{category} > {minimum}%" for category, minimum in rule["conditions"])
     return f"({mbti_term}) ∧ ({subject_term})"
+
