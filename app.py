@@ -19,6 +19,7 @@ from data import (
 from logic import (
     aptitude_summary,
     derive_mbti,
+    financial_summary,
     function_totals,
     logic_expression,
     match_faculties,
@@ -32,7 +33,12 @@ st.set_page_config(page_title="UniMatch — เลือกคณะด้วย
 def ensure_state() -> None:
     st.session_state.setdefault("cognitive_done", False)
     st.session_state.setdefault("aptitude_done", False)
+    st.session_state.setdefault("finance_done", False)
     st.session_state.setdefault("budget", "medium")
+    st.session_state.setdefault("career_goal", "ความมั่นคงและสวัสดิการ")
+    st.session_state.setdefault("financial_urgency", "ไม่มีภาระเร่งด่วน")
+    st.session_state.setdefault("bonded_scholarship", "ไม่สนใจ / สนใจเฉพาะทุนมอบเปล่า")
+    st.session_state.setdefault("travel_constraint", "ยืดหยุ่น ไปเรียนต่างจังหวัดได้")
     for function, item in COGNITIVE_FUNCTIONS.items():
         for number in range(len(item["questions"])):
             st.session_state.setdefault(f"cf_{function}_{number}", 3)
@@ -52,6 +58,16 @@ def aptitude_responses() -> dict[str, list[int]]:
     return {
         code: [st.session_state[f"apt_{code}_{number}"] for number in range(6)]
         for code in APTITUDE_CATEGORIES
+    }
+
+
+def finance_inputs() -> dict[str, str]:
+    return {
+        "budget": st.session_state.budget,
+        "career_goal": st.session_state.career_goal,
+        "financial_urgency": st.session_state.financial_urgency,
+        "bonded_scholarship": st.session_state.bonded_scholarship,
+        "travel_constraint": st.session_state.travel_constraint,
     }
 
 
@@ -139,7 +155,7 @@ def render_aptitude() -> None:
 def render_finance() -> None:
     st.title("ส่วนที่ 3 — การบริหารและการเงิน")
     st.write("เลือกข้อมูลเพื่อกรองตัวอย่างมหาวิทยาลัยให้สอดคล้องกับข้อจำกัดของคุณ")
-    st.session_state.budget = st.radio(
+    st.radio(
         "งบประมาณค่าใช้จ่ายทางการศึกษาต่อเทอม",
         options=["low", "medium", "high"],
         format_func=lambda item: {
@@ -147,6 +163,7 @@ def render_finance() -> None:
             "medium": "งบปานกลาง — โดยประมาณ 17,000–45,000 บาท/เทอม",
             "high": "งบมาก — ตั้งแต่ประมาณ 60,000 บาท/เทอม หรือหลักสูตรนานาชาติ/เอกชน",
         }[item],
+        key="budget",
     )
     st.selectbox(
         "เป้าหมายหลังเรียนจบที่ให้ความสำคัญมากที่สุด",
@@ -156,13 +173,38 @@ def render_finance() -> None:
     st.radio("ภาระหลังเรียนจบ", ["มีภาระ ต้องรีบหางาน", "ไม่มีภาระเร่งด่วน"], key="financial_urgency")
     st.radio("ทุนแบบมีเงื่อนไขผูกพัน", ["สนใจมาก", "ไม่สนใจ / สนใจเฉพาะทุนมอบเปล่า"], key="bonded_scholarship")
     st.radio("ข้อจำกัดเรื่องที่อยู่/การเดินทาง", ["จำเป็นต้องเรียนใกล้บ้าน", "ยืดหยุ่น ไปเรียนต่างจังหวัดได้"], key="travel_constraint")
-    st.success("ข้อมูลการเงินจะถูกใช้เพื่อแสดงระดับค่าเทอมที่อยู่ในขอบเขตงบของคุณ")
+    if st.button("บันทึกและสรุปแผนการเงิน", type="primary"):
+        st.session_state.finance_done = True
+        st.success("บันทึกข้อมูลการเงินแล้ว หน้าสรุปผลจะแสดงทั้ง 3 ส่วน")
+    if st.session_state.finance_done:
+        render_financial_summary(financial_summary(**finance_inputs()))
+
+
+def render_financial_summary(summary: dict) -> None:
+    """แสดงผลส่วนที่ 3 ทั้งบนหน้าการเงินและหน้าสรุปรวม."""
+    st.subheader("ส่วนที่ 3 — สรุปข้อมูลการบริหารและการเงิน")
+    left, right = st.columns(2)
+    left.metric("ระดับงบประมาณ", summary["budget_label"])
+    right.metric("ค่าเทอมที่ใช้วางแผน", summary["tuition_range"])
+    st.markdown(f"**แนวทางเลือกสถาบัน:** {summary['planning_focus']}")
+    st.markdown("**ผลจากเงื่อนไขที่คุณเลือก**")
+    st.dataframe(
+        pd.DataFrame(summary["decisions"]).rename(
+            columns={"topic": "หัวข้อ", "answer": "คำตอบ", "guidance": "ผลต่อแผนการเงิน"}
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.markdown("**รายการที่ควรทำต่อ**")
+    for action in summary["actions"]:
+        st.write(f"- {action}")
+    st.caption("ค่าเทอมเป็นข้อมูลประมาณการต่อเทอม ยังไม่รวมค่าหอพัก ค่าเดินทาง ค่าครองชีพ และอุปกรณ์")
 
 
 def render_mbti_explanation(result, scores: dict[str, int]) -> None:
     dominant, auxiliary, tertiary, inferior = result.stack
     profile = MBTI_PROFILES[result.mbti]
-    st.title("ผล MBTI และลำดับ Cognitive Functions")
+    st.subheader("ส่วนที่ 1 — ผล MBTI และลำดับ Cognitive Functions")
     st.metric("ประเภทที่ระบบสรุป", result.mbti)
     st.write(f"**ภาพรวม:** {profile[0]}")
     st.write(f"**จุดเด่น:** {profile[1]}")
@@ -212,23 +254,43 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
 
 
 def render_summary() -> None:
-    st.title("ส่วนสรุป — ประพจน์ คณะที่ตรงเงื่อนไข และมหาวิทยาลัย")
-    if not (st.session_state.cognitive_done and st.session_state.aptitude_done):
-        st.warning("กรุณาทำส่วนที่ 1 และส่วนที่ 2 ให้เสร็จก่อน จึงจะสรุปผลแบบครบถ้วนได้")
+    st.title("ส่วนสรุป — ผลทั้ง 3 ส่วน คณะ และมหาวิทยาลัย")
+    completed = {
+        "ส่วนที่ 1 Cognitive Functions": st.session_state.cognitive_done,
+        "ส่วนที่ 2 ความสนใจและความถนัด": st.session_state.aptitude_done,
+        "ส่วนที่ 3 การบริหารและการเงิน": st.session_state.finance_done,
+    }
+    if not all(completed.values()):
+        remaining = ", ".join(name for name, is_done in completed.items() if not is_done)
+        st.warning(f"กรุณาทำให้ครบก่อนเพื่อดูผลสรุปรวม: {remaining}")
         return
 
     scores = function_totals(cognitive_responses())
     mbti_result = derive_mbti(scores)
     aptitude = aptitude_summary(aptitude_responses())
+    finance = financial_summary(**finance_inputs())
+    strongest = sorted(aptitude.items(), key=lambda item: int(item[1]["percent"]), reverse=True)[:2]
+
+    st.subheader("ภาพรวมผลทั้ง 3 ส่วน")
+    overview_mbti, overview_aptitude, overview_finance = st.columns(3)
+    overview_mbti.metric("1. MBTI", mbti_result.mbti, f"Dominant: {mbti_result.stack[0]}")
+    overview_aptitude.metric("2. หมวดที่เด่น", strongest[0][1]["name"], f"{strongest[0][1]['percent']}%")
+    overview_finance.metric("3. งบประมาณ", finance["budget_label"], finance["tuition_range"])
+    st.caption(f"หมวดรองที่เด่น: {strongest[1][1]['name']} ({strongest[1][1]['percent']}%)")
+
     render_mbti_explanation(mbti_result, scores)
 
     st.divider()
-    st.subheader("ผลความสนใจและความถนัด")
+    st.subheader("ส่วนที่ 2 — ผลความสนใจและความถนัด")
     aptitude_table = pd.DataFrame(
         [{"รหัส": code, "หมวด": value["name"], "คะแนน / 30": value["total"], "%": value["percent"], "โซน": value["zone"]} for code, value in aptitude.items()]
     )
     st.dataframe(aptitude_table, use_container_width=True, hide_index=True)
 
+    st.divider()
+    render_financial_summary(finance)
+
+    st.divider()
     matches = match_faculties(mbti_result.mbti, aptitude)
     st.subheader("คณะที่ผ่านประพจน์ทั้งหมด")
     if matches:
@@ -256,7 +318,7 @@ def render_summary() -> None:
         "cognitive_stack": {"dominant": mbti_result.stack[0], "auxiliary": mbti_result.stack[1], "tertiary": mbti_result.stack[2], "inferior": mbti_result.stack[3]},
         "function_scores": scores,
         "aptitude": aptitude,
-        "budget": st.session_state.budget,
+        "financial_summary": finance,
         "matched_faculties": [item["faculty"] for item in matches],
     }
     st.download_button("ดาวน์โหลดผลลัพธ์ JSON", data=json.dumps(report, ensure_ascii=False, indent=2), file_name="unimatch-result.json", mime="application/json")
@@ -279,3 +341,4 @@ elif page == "3. การเงิน":
     render_finance()
 else:
     render_summary()
+
