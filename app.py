@@ -34,27 +34,38 @@ def ensure_state() -> None:
     st.session_state.setdefault("cognitive_done", False)
     st.session_state.setdefault("aptitude_done", False)
     st.session_state.setdefault("finance_done", False)
-    st.session_state.setdefault("budget", "medium")
-    st.session_state.setdefault("career_goal", "ความมั่นคงและสวัสดิการ")
-    st.session_state.setdefault("financial_urgency", "ไม่มีภาระเร่งด่วน")
-    st.session_state.setdefault("bonded_scholarship", "ไม่สนใจ / สนใจเฉพาะทุนมอบเปล่า")
-    st.session_state.setdefault("travel_constraint", "ยืดหยุ่น ไปเรียนต่างจังหวัดได้")
-    for function, item in COGNITIVE_FUNCTIONS.items():
-        for number in range(len(item["questions"])):
-            st.session_state.setdefault(f"cf_{function}_{number}", 3)
-    for code, item in APTITUDE_CATEGORIES.items():
-        for number in range(len(item["questions"])):
-            st.session_state.setdefault(f"apt_{code}_{number}", 3)
+    # Streamlit removes a widget key when its page is not rendered.  Keep a
+    # separate, non-widget copy so changing pages never resets saved answers.
+    st.session_state.setdefault(
+        "saved_cognitive_responses",
+        {function: [3] * len(item["questions"]) for function, item in COGNITIVE_FUNCTIONS.items()},
+    )
+    st.session_state.setdefault(
+        "saved_aptitude_responses",
+        {code: [3] * len(item["questions"]) for code, item in APTITUDE_CATEGORIES.items()},
+    )
+    st.session_state.setdefault(
+        "saved_finance_inputs",
+        {
+            "budget": "medium",
+            "career_goal": "ความมั่นคงและสวัสดิการ",
+            "financial_urgency": "ไม่มีภาระเร่งด่วน",
+            "bonded_scholarship": "ไม่สนใจ / สนใจเฉพาะทุนมอบเปล่า",
+            "travel_constraint": "ยืดหยุ่น ไปเรียนต่างจังหวัดได้",
+        },
+    )
+    st.session_state.setdefault("active_page", "เริ่มต้น")
+    st.session_state.setdefault("nav_choice", "เริ่มต้น")
 
 
-def cognitive_responses() -> dict[str, list[int]]:
+def current_cognitive_responses() -> dict[str, list[int]]:
     return {
         function: [st.session_state[f"cf_{function}_{number}"] for number in range(10)]
         for function in FUNCTION_ORDER
     }
 
 
-def aptitude_responses() -> dict[str, list[int]]:
+def current_aptitude_responses() -> dict[str, list[int]]:
     return {
         code: [st.session_state[f"apt_{code}_{number}"] for number in range(6)]
         for code in APTITUDE_CATEGORIES
@@ -62,12 +73,17 @@ def aptitude_responses() -> dict[str, list[int]]:
 
 
 def finance_inputs() -> dict[str, str]:
+    """คืนค่าการเงินที่บันทึกไว้ ไม่อิง widget ที่อาจถูก Streamlit ล้าง."""
+    return st.session_state.saved_finance_inputs
+
+
+def current_finance_inputs() -> dict[str, str]:
     return {
-        "budget": st.session_state.budget,
-        "career_goal": st.session_state.career_goal,
-        "financial_urgency": st.session_state.financial_urgency,
-        "bonded_scholarship": st.session_state.bonded_scholarship,
-        "travel_constraint": st.session_state.travel_constraint,
+        "budget": st.session_state.finance_budget,
+        "career_goal": st.session_state.finance_career_goal,
+        "financial_urgency": st.session_state.finance_financial_urgency,
+        "bonded_scholarship": st.session_state.finance_bonded_scholarship,
+        "travel_constraint": st.session_state.finance_travel_constraint,
     }
 
 
@@ -104,25 +120,19 @@ def render_cognitive() -> None:
             item = COGNITIVE_FUNCTIONS[function]
             st.subheader(item["name_th"])
             for number, question in enumerate(item["questions"], start=1):
+                key = f"cf_{function}_{number - 1}"
+                if key not in st.session_state:
+                    st.session_state[key] = st.session_state.saved_cognitive_responses[function][number - 1]
                 st.select_slider(
                     f"{number}. {question}",
                     options=list(LIKERT_LABELS),
                     format_func=lambda value: LIKERT_LABELS[value],
-                    key=f"cf_{function}_{number - 1}",
+                    key=key,
                 )
-    if st.button("คำนวณผล Cognitive Functions", type="primary"):
+    if st.button("บันทึกส่วนที่ 1: Cognitive Functions", type="primary"):
+        st.session_state.saved_cognitive_responses = current_cognitive_responses()
         st.session_state.cognitive_done = True
-        st.success("บันทึกผลแล้ว เปิดหน้าสรุป MBTI เพื่อดูผลได้เลย")
-    if st.session_state.cognitive_done:
-        scores = function_totals(cognitive_responses())
-        result = derive_mbti(scores)
-        st.subheader(f"ผลเบื้องต้น: {result.mbti}")
-        st.dataframe(
-            pd.DataFrame([{"Function": function, "คะแนน / 50": scores[function]} for function in FUNCTION_ORDER])
-            .sort_values("คะแนน / 50", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.success("บันทึกส่วนที่ 1 แล้ว ใช้ปุ่ม “สรุปผลทั้งหมด” ในเมนูเพื่อดูผล")
 
 
 def render_aptitude() -> None:
@@ -134,27 +144,34 @@ def render_aptitude() -> None:
             st.subheader(item["name"])
             st.caption(item["short"])
             for number, question in enumerate(item["questions"], start=1):
+                key = f"apt_{code}_{number - 1}"
+                if key not in st.session_state:
+                    st.session_state[key] = st.session_state.saved_aptitude_responses[code][number - 1]
                 st.select_slider(
                     f"{number}. {question}",
                     options=list(LIKERT_LABELS),
                     format_func=lambda value: LIKERT_LABELS[value],
-                    key=f"apt_{code}_{number - 1}",
+                    key=key,
                 )
-    if st.button("สรุปผลความสนใจและความถนัด", type="primary"):
+    if st.button("บันทึกส่วนที่ 2: ความสนใจและความถนัด", type="primary"):
+        st.session_state.saved_aptitude_responses = current_aptitude_responses()
         st.session_state.aptitude_done = True
-        st.success("บันทึกผลแล้ว เปิดหน้าสรุปเพื่อดูเปอร์เซ็นต์และคณะที่ตรงเงื่อนไข")
-    if st.session_state.aptitude_done:
-        summary = aptitude_summary(aptitude_responses())
-        st.dataframe(
-            pd.DataFrame(summary.values()).rename(columns={"name": "หมวด", "total": "คะแนน / 30", "percent": "%", "zone": "การแปลผล"}),
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.success("บันทึกส่วนที่ 2 แล้ว ใช้ปุ่ม “สรุปผลทั้งหมด” ในเมนูเพื่อดูผล")
 
 
 def render_finance() -> None:
     st.title("ส่วนที่ 3 — การบริหารและการเงิน")
     st.write("เลือกข้อมูลเพื่อกรองตัวอย่างมหาวิทยาลัยให้สอดคล้องกับข้อจำกัดของคุณ")
+    saved = st.session_state.saved_finance_inputs
+    for widget_key, saved_key in (
+        ("finance_budget", "budget"),
+        ("finance_career_goal", "career_goal"),
+        ("finance_financial_urgency", "financial_urgency"),
+        ("finance_bonded_scholarship", "bonded_scholarship"),
+        ("finance_travel_constraint", "travel_constraint"),
+    ):
+        if widget_key not in st.session_state:
+            st.session_state[widget_key] = saved[saved_key]
     st.radio(
         "งบประมาณค่าใช้จ่ายทางการศึกษาต่อเทอม",
         options=["low", "medium", "high"],
@@ -163,21 +180,20 @@ def render_finance() -> None:
             "medium": "งบปานกลาง — โดยประมาณ 17,000–45,000 บาท/เทอม",
             "high": "งบมาก — ตั้งแต่ประมาณ 60,000 บาท/เทอม หรือหลักสูตรนานาชาติ/เอกชน",
         }[item],
-        key="budget",
+        key="finance_budget",
     )
     st.selectbox(
         "เป้าหมายหลังเรียนจบที่ให้ความสำคัญมากที่สุด",
         ["ความมั่นคงและสวัสดิการ", "รายได้เร็ว / คืนทุนไว", "อิสระและความเป็นตัวเอง"],
-        key="career_goal",
+        key="finance_career_goal",
     )
-    st.radio("ภาระหลังเรียนจบ", ["มีภาระ ต้องรีบหางาน", "ไม่มีภาระเร่งด่วน"], key="financial_urgency")
-    st.radio("ทุนแบบมีเงื่อนไขผูกพัน", ["สนใจมาก", "ไม่สนใจ / สนใจเฉพาะทุนมอบเปล่า"], key="bonded_scholarship")
-    st.radio("ข้อจำกัดเรื่องที่อยู่/การเดินทาง", ["จำเป็นต้องเรียนใกล้บ้าน", "ยืดหยุ่น ไปเรียนต่างจังหวัดได้"], key="travel_constraint")
-    if st.button("บันทึกและสรุปแผนการเงิน", type="primary"):
+    st.radio("ภาระหลังเรียนจบ", ["มีภาระ ต้องรีบหางาน", "ไม่มีภาระเร่งด่วน"], key="finance_financial_urgency")
+    st.radio("ทุนแบบมีเงื่อนไขผูกพัน", ["สนใจมาก", "ไม่สนใจ / สนใจเฉพาะทุนมอบเปล่า"], key="finance_bonded_scholarship")
+    st.radio("ข้อจำกัดเรื่องที่อยู่/การเดินทาง", ["จำเป็นต้องเรียนใกล้บ้าน", "ยืดหยุ่น ไปเรียนต่างจังหวัดได้"], key="finance_travel_constraint")
+    if st.button("บันทึกส่วนที่ 3: การบริหารและการเงิน", type="primary"):
+        st.session_state.saved_finance_inputs = current_finance_inputs()
         st.session_state.finance_done = True
-        st.success("บันทึกข้อมูลการเงินแล้ว หน้าสรุปผลจะแสดงทั้ง 3 ส่วน")
-    if st.session_state.finance_done:
-        render_financial_summary(financial_summary(**finance_inputs()))
+        st.success("บันทึกส่วนที่ 3 แล้ว ใช้ปุ่ม “สรุปผลทั้งหมด” ในเมนูเพื่อดูผล")
 
 
 def render_financial_summary(summary: dict) -> None:
@@ -265,9 +281,9 @@ def render_summary() -> None:
         st.warning(f"กรุณาทำให้ครบก่อนเพื่อดูผลสรุปรวม: {remaining}")
         return
 
-    scores = function_totals(cognitive_responses())
+    scores = function_totals(st.session_state.saved_cognitive_responses)
     mbti_result = derive_mbti(scores)
-    aptitude = aptitude_summary(aptitude_responses())
+    aptitude = aptitude_summary(st.session_state.saved_aptitude_responses)
     finance = financial_summary(**finance_inputs())
     strongest = sorted(aptitude.items(), key=lambda item: int(item[1]["percent"]), reverse=True)[:2]
 
@@ -304,7 +320,7 @@ def render_summary() -> None:
                 st.dataframe(pd.DataFrame(details), hide_index=True, use_container_width=True)
                 st.markdown(f"`{mbti_result.mbti} ∈ {{{' ∨ '.join(rule['mbti_set'])}}}` → **จริง**")
                 st.markdown("**ตัวอย่างมหาวิทยาลัยภายในงบที่เลือก**")
-                for option in university_options(rule["group"], st.session_state.budget):
+                for option in university_options(rule["group"], finance["budget"]):
                     st.write(f"- [{BUDGET_LABELS[option['tier']]}] {option['university']} — {option['estimate']}")
     else:
         st.info("ยังไม่มีคณะที่ผ่านทุกประพจน์แบบ strict (`>`). นี่ไม่ได้แปลว่าเรียนไม่ได้ แต่บอกว่าคะแนนยังไม่ผ่านเกณฑ์ตั้งต้นของกฎนี้ครบทุกข้อ")
@@ -326,10 +342,33 @@ def render_summary() -> None:
 
 
 ensure_state()
+
+
+def navigate_from_menu() -> None:
+    st.session_state.active_page = st.session_state.nav_choice
+
+
+def navigate_to_summary() -> None:
+    st.session_state.nav_choice = "สรุปผล"
+    st.session_state.active_page = "สรุปผล"
+
+
 with st.sidebar:
     st.title("UniMatch")
-    page = st.radio("เมนู", ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "3. การเงิน", "สรุปผล"])
-    st.caption(f"Cognitive: {'✓' if st.session_state.cognitive_done else '○'} | ความถนัด: {'✓' if st.session_state.aptitude_done else '○'}")
+    st.radio(
+        "เมนู",
+        ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "3. การเงิน", "สรุปผล"],
+        key="nav_choice",
+        on_change=navigate_from_menu,
+    )
+    st.button("📊 สรุปผลทั้งหมด", type="primary", use_container_width=True, on_click=navigate_to_summary)
+    st.caption(
+        f"ส่วนที่ 1: {'✓' if st.session_state.cognitive_done else '○'} | "
+        f"ส่วนที่ 2: {'✓' if st.session_state.aptitude_done else '○'} | "
+        f"ส่วนที่ 3: {'✓' if st.session_state.finance_done else '○'}"
+    )
+
+page = st.session_state.active_page
 
 if page == "เริ่มต้น":
     render_intro()
