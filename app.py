@@ -249,9 +249,12 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
 4. ผลที่เลือกคือ `{result.mbti}` มี stack `{dominant} → {auxiliary} → {tertiary} → {inferior}` และใช้กฎคู่ตรงข้าม: Dominant กับ Inferior เป็นคู่แกนเดียวกัน (เช่น `Ne ⇔ Si`, `Ni ⇔ Se`, `Te ⇔ Fi`, `Ti ⇔ Fe`)
         """
     )
+    auxiliary_candidates = sorted(
+        {stack[1] for stack in MBTI_STACKS.values() if stack[0] == dominant}
+    )
     st.code(
         f"Dom={dominant} ⇔ ∀f Score({dominant}) ≥ Score(f)\n"
-        f"Dom={dominant} ⇒ Aux ∈ {{…}}\n"
+        f"Dom={dominant} ⇒ Aux ∈ {{' ∨ '.join(auxiliary_candidates)}}\n"
         f"Type={result.mbti} ⇒ {dominant} → {auxiliary} → {tertiary} → {inferior}",
         language="text",
     )
