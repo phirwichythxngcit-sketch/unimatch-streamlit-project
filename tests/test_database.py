@@ -10,7 +10,7 @@ from logic.database import Database
 
 def test_save_and_get_assessment():
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
+        db_path = str(Path(tmpdir) / "test.db")
         db = Database(db_path)
 
         data = {
@@ -46,7 +46,7 @@ def test_save_and_get_assessment():
 
 def test_get_all_assessments():
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
+        db_path = str(Path(tmpdir) / "test.db")
         db = Database(db_path)
 
         for i in range(3):
@@ -63,7 +63,7 @@ def test_get_all_assessments():
 
 def test_get_count():
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
+        db_path = str(Path(tmpdir) / "test.db")
         db = Database(db_path)
 
         assert db.get_count() == 0
@@ -75,7 +75,7 @@ def test_get_count():
 
 def test_get_mbti_distribution():
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
+        db_path = str(Path(tmpdir) / "test.db")
         db = Database(db_path)
 
         db.save_assessment({"assessment_id": "T1", "mbti": "INTP"})
@@ -90,7 +90,7 @@ def test_get_mbti_distribution():
 
 def test_get_top_interest_distribution():
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
+        db_path = str(Path(tmpdir) / "test.db")
         db = Database(db_path)
 
         db.save_assessment({"assessment_id": "T1", "m_score": 80, "s_score": 60, "l_score": 40, "h_score": 50, "a_score": 30})
@@ -104,7 +104,7 @@ def test_get_top_interest_distribution():
 
 def test_get_faculty_distribution():
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
+        db_path = str(Path(tmpdir) / "test.db")
         db = Database(db_path)
 
         db.save_assessment({"assessment_id": "T1", "top_faculty": "Computer Science"})
@@ -119,7 +119,7 @@ def test_get_faculty_distribution():
 
 def test_get_average_match():
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test.db")
+        db_path = str(Path(tmpdir) / "test.db")
         db = Database(db_path)
 
         db.save_assessment({"assessment_id": "T1", "top_match_pct": 80})
