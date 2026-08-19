@@ -1,11 +1,12 @@
 """Dashboard Page — สถิติและการวิเคราะห์ข้อมูล"""
 
 import streamlit as st
-import os
 import sys
 import pandas as pd
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
 from logic.database import Database
 
 
