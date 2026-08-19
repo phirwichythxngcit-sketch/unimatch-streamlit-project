@@ -101,7 +101,7 @@ def render_intro() -> None:
 1. ทำแบบประเมิน Cognitive Functions 80 ข้อ (8 ฟังก์ชัน × 10 ข้อ)
 2. ทำแบบประเมินความสนใจ/ความถนัด 30 ข้อ (5 หมวด × 6 ข้อ)
 3. เลือกระดับงบประมาณและเงื่อนไขการเงิน
-4. เปิดหน้าสรุปเพื่อดู MBTI, ประพจน์ที่เป็นจริง และคณะ/มหาวิทยาลัยตัวอย่าง
+4. เปิดหน้าสรุปเพื่อดู MBTI, ประพจน์ที่เป็นจริง, และคณะ/มหาวิทยาลัยตัวอย่าง
         """
     )
 
@@ -240,22 +240,38 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
     if result.used_tiebreak:
         st.warning("มีคะแนน Dominant หรือ Auxiliary เสมอกัน จึงใช้ลำดับ Tertiary/Inferior เป็นตัวตัดสินผลที่แสดง")
 
-    st.subheader("อธิบายตรรกศาสตร์ที่ใช้หา MBTI")
+    # อธิบายหลักตรรกศาสตร์ของฟังก์ชันรอง (Aux) ในรูปแบบประพจน์เชิงตรรกะ
+    st.subheader("อธิบายหลักตรรกศาสตร์ของฟังก์ชันรอง (Aux) เป็นประพจน์")
+    auxiliary_candidates = sorted({stack[1] for stack in MBTI_STACKS.values() if stack[0] == dominant})
     st.markdown(
         f"""
-1. กำหนด `Score(f)` เป็นคะแนนรวมของ function `f` จากคำตอบ 10 ข้อ
-2. `Dom = {dominant}` เป็นจริง เพราะ `{scores[dominant]}` เป็นค่าสูงสุดของทุก function
-3. เมื่อ `Dom = {dominant}` ประเภทที่เป็นไปได้จะถูกจำกัดเหลือสอง stack ที่มี Dominant เดียวกัน แล้วเปรียบเทียบ Auxiliary
-4. ผลที่เลือกคือ `{result.mbti}` มี stack `{dominant} → {auxiliary} → {tertiary} → {inferior}` และใช้กฎคู่ตรงข้าม: Dominant กับ Inferior เป็นคู่แกนเดียวกัน (เช่น `Ne ⇔ Si`, `Ni ⇔ Se`, `Te ⇔ Fi`, `Ti ⇔ Fe`)
+ต่อไปนี้นิยามสัญกรณ์และกฎเชิงตรรกะที่ใช้เลือก Auxiliary:
+
+1. นิยามคะแนน: `Score(f)` = คะแนนรวมของฟังก์ชัน `f` (ผลรวมจากคำตอบ 10 ข้อ)
+2. นิยาม Dominant:
+   - Dom = d ⇔ ∀f: Score(d) ≥ Score(f)
+3. นิยวมูลนิธิของ Auxiliary:
+   - CandidateAux(d) = {{ {', '.join(auxiliary_candidates)} }} คือเซตของฟังก์ชันที่เป็น Auxiliary สำหรับ stack ที่มี Dominant = d
+4. กฎการเลือก Auxiliary (ประพจน์หลัก):
+   - Aux = a* ⇔ (a* ∈ CandidateAux(d)) ∧ (∀a ∈ CandidateAux(d): Score(a*) ≥ Score(a))
+   - กล่าวคือ: เลือกฟังก์ชันจาก CandidateAux(d) ที่มีคะแนนมากที่สุด
+5. การแก้เสมอ (tie-breaking):
+   - หากมี a1, a2 ∈ CandidateAux(d) ที่ Score(a1) = Score(a2) จะใช้ลำดับต่อไปนี้เป็นตัวตัดสินแบบ deterministic:
+     1) เปรียบเทียบคะแนน Tertiary (Tert) ของ stack(s) ที่สอดคล้องกับแต่ละ candidate
+     2) หากยังเสมอ ให้เปรียบเทียบ Inferior ตาม stack ที่สอดคล้อง
+     3) หากยังเสมอ ระบบจะทำการเลือกตามกฎที่ทำซ้ำได้ (deterministic) และแจ้งผู้ใช้ว่าเกิด tie
+6. นิยามประเภท (Type) เป็นผลของการรวมประพจน์:
+   - Type = mbti ⇔ (Dom = d) ∧ (Aux = a*) ∧ (Tert = t) ∧ (Inf = i)
         """
     )
-    auxiliary_candidates = sorted(
-        {stack[1] for stack in MBTI_STACKS.values() if stack[0] == dominant}
-    )
+
     st.code(
+        "สรุปเชิงประพจน์:\n"
         f"Dom={dominant} ⇔ ∀f Score({dominant}) ≥ Score(f)\n"
-        f"Dom={dominant} ⇒ Aux ∈ {{' ∨ '.join(auxiliary_candidates)}}\n"
-        f"Type={result.mbti} ⇒ {dominant} → {auxiliary} → {tertiary} → {inferior}",
+        f"CandidateAux({dominant}) = {{{', '.join(auxiliary_candidates)}}}\n"
+        f"Aux=a* ⇔ a* ∈ CandidateAux({dominant}) ∧ ∀a ∈ CandidateAux({dominant}): Score(a*) ≥ Score(a)\n"
+        "Tie-breaking: หากคะแนนเท่ากัน ให้ใช้ Tertiary → Inferior เป็นลำดับตัดสิน\n"
+        f"Type={result.mbti} ⇔ Dom={dominant} ∧ Aux={auxiliary} ∧ Tert={tertiary} ∧ Inf={inferior}",
         language="text",
     )
     with st.expander("ดูคำอธิบายทั้ง 16 MBTI"):
@@ -383,4 +399,3 @@ elif page == "3. การเงิน":
     render_finance()
 else:
     render_summary()
-
