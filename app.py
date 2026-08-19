@@ -80,21 +80,21 @@ if page == "🏠 หน้าแรก":
     st.caption("โครงงานคณิตศาสตร์เรื่อง ตรรกศาสตร์")
 
 elif page == "📋 แบบประเมิน":
-    from pages.assessment import run
+    from ui.assessment import run
     run()
 
 elif page == "📊 ผลการประเมิน":
-    from pages.result import run
+    from ui.result import run
     run()
 
 elif page == "📈 Dashboard":
-    from pages.dashboard import run
+    from ui.dashboard import run
     run()
 
 elif page == "📜 ประวัติ":
-    from pages.history import run
+    from ui.history import run
     run()
 
 elif page == "🧠 หลักการตรรกศาสตร์":
-    from pages.logic_explanation import run
+    from ui.logic_explanation import run
     run()
