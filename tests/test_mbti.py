@@ -1,8 +1,8 @@
 """Tests for MBTI Engine"""
 
 import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from logic.mbti_engine import MBTIEngine
 
