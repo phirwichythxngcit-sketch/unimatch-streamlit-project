@@ -16,38 +16,47 @@ from logic.database import Database
 DATA_DIR = ROOT_DIR / "data"
 
 
-@st.cache_data
+_questions_data = None
+_interest_data = None
+_financial_data = None
+
+
+def _load_json(filename):
+    path = DATA_DIR / filename
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        st.error(f"ไม่พบไฟล์ {filename} ที่ {path}")
+        st.stop()
+    except json.JSONDecodeError as e:
+        st.error(f"ไฟล์ {filename} มีรูปแบบ JSON ไม่ถูกต้อง: {e}")
+        st.stop()
+    return None
+
+
 def load_questions():
-    path = DATA_DIR / "questions.json"
-    if not path.exists():
-        st.error(f"ไม่พบไฟล์ questions.json ที่ {path}")
+    global _questions_data
+    if _questions_data is None:
+        _questions_data = _load_json("questions.json")
+    if not isinstance(_questions_data, dict) or "functions" not in _questions_data:
+        st.error("รูปแบบไฟล์ questions.json ไม่ถูกต้อง")
         st.stop()
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, dict) or "functions" not in data:
-        st.error(f"รูปแบบไฟล์ questions.json ไม่ถูกต้อง: keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
-        st.stop()
-    return data
+    return _questions_data
 
 
-@st.cache_data
 def load_interest_questions():
-    path = DATA_DIR / "interest_questions.json"
-    if not path.exists():
-        st.error(f"ไม่พบไฟล์ interest_questions.json ที่ {path}")
-        st.stop()
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    global _interest_data
+    if _interest_data is None:
+        _interest_data = _load_json("interest_questions.json")
+    return _interest_data
 
 
-@st.cache_data
 def load_financial_questions():
-      path = DATA_DIR / "financial_questions.json"
-    if not path.exists():
-        st.error(f"ไม่พบไฟล์ financial_questions.json ที่ {path}")
-        st.stop()
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+       global _financial_data
+    if _financial_data is None:
+        _financial_data = _load_json("financial_questions.json")
+    return _financial_data
 
 
 def run():
