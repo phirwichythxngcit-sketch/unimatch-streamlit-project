@@ -67,7 +67,7 @@ project/
 │   ├── faculty_matcher.py    # Faculty Matching Engine
 │   └── database.py           # SQLite Database Layer
 │
-├── pages/
+├── ui/
 │   ├── assessment.py         # แบบประเมิน (MBTI + Interest + Financial)
 │   ├── result.py             # ผลการประเมิน
 │   ├── dashboard.py          # Dashboard สถิติ
