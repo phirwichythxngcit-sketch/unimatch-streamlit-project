@@ -2,14 +2,15 @@
 
 import streamlit as st
 import json
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
 from logic.mbti_engine import MBTIEngine
 from logic.database import Database
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+DATA_DIR = ROOT_DIR / "data"
 
 
 def run():
