@@ -1,15 +1,16 @@
 """Faculty Matcher — จับคู่ผู้เรียนกับคณะโดยใช้ Logic Engine"""
 
 import json
-import os
+from pathlib import Path
 from logic.logic_engine import LogicEngine, Proposition
 
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT_DIR / "data"
 
 
 def load_faculties() -> list[dict]:
-    path = os.path.join(DATA_DIR, "faculties.json")
+    path = DATA_DIR / "faculties.json"
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
