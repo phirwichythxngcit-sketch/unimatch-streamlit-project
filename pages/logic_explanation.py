@@ -1,10 +1,11 @@
 """Logic Explanation Page — อธิบายหลักการตรรกศาสตร์ของระบบ"""
 
 import streamlit as st
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
 from logic.logic_engine import LogicEngine
 
 
