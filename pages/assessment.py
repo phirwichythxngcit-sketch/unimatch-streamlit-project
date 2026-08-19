@@ -16,18 +16,37 @@ from logic.database import Database
 DATA_DIR = ROOT_DIR / "data"
 
 
+@st.cache_data
 def load_questions():
-    with open(DATA_DIR / "questions.json", "r", encoding="utf-8") as f:
-        return json.load(f)
+    path = DATA_DIR / "questions.json"
+    if not path.exists():
+        st.error(f"ไม่พบไฟล์ questions.json ที่ {path}")
+        st.stop()
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or "functions" not in data:
+        st.error(f"รูปแบบไฟล์ questions.json ไม่ถูกต้อง: keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+        st.stop()
+    return data
 
 
+@st.cache_data
 def load_interest_questions():
-    with open(DATA_DIR / "interest_questions.json", "r", encoding="utf-8") as f:
+    path = DATA_DIR / "interest_questions.json"
+    if not path.exists():
+        st.error(f"ไม่พบไฟล์ interest_questions.json ที่ {path}")
+        st.stop()
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
+@st.cache_data
 def load_financial_questions():
-     with open(DATA_DIR / "financial_questions.json", "r", encoding="utf-8") as f:
+      path = DATA_DIR / "financial_questions.json"
+    if not path.exists():
+        st.error(f"ไม่พบไฟล์ financial_questions.json ที่ {path}")
+        st.stop()
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
