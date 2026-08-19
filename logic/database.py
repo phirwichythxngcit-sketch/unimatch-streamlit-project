@@ -1,12 +1,13 @@
 """Database Layer — SQLite สำหรับเก็บผลการประเมิน"""
 
 import sqlite3
-import os
 import json
 from datetime import datetime
+from pathlib import Path
 
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-DB_PATH = os.path.join(DB_DIR, "app.db")
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DB_DIR = ROOT_DIR / "data"
+DB_PATH = DB_DIR / "app.db"
 
 
 class Database:
