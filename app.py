@@ -59,17 +59,40 @@ def ensure_state() -> None:
 
 
 def current_cognitive_responses() -> dict[str, list[int]]:
-    return {
-        function: [st.session_state[f"cf_{function}_{number}"] for number in range(10)]
-        for function in FUNCTION_ORDER
-    }
+    """Return current cognitive responses, falling back to saved answers when
+    widget keys are not present (e.g., the user hasn't visited the page).
+    """
+    result: dict[str, list[int]] = {}
+    for function in FUNCTION_ORDER:
+        questions_len = len(COGNITIVE_FUNCTIONS[function]["questions"])
+        values = []
+        for number in range(questions_len):
+            key = f"cf_{function}_{number}"
+            if key in st.session_state:
+                values.append(int(st.session_state[key]))
+            else:
+                # fallback to saved responses (guaranteed by ensure_state)
+                values.append(int(st.session_state["saved_cognitive_responses"][function][number]))
+        result[function] = values
+    return result
 
 
 def current_aptitude_responses() -> dict[str, list[int]]:
-    return {
-        code: [st.session_state[f"apt_{code}_{number}"] for number in range(6)]
-        for code in APTITUDE_CATEGORIES
-    }
+    """Return current aptitude responses, falling back to saved answers when
+    widget keys are not present.
+    """
+    result: dict[str, list[int]] = {}
+    for code, item in APTITUDE_CATEGORIES.items():
+        questions_len = len(item["questions"])
+        values = []
+        for number in range(questions_len):
+            key = f"apt_{code}_{number}"
+            if key in st.session_state:
+                values.append(int(st.session_state[key]))
+            else:
+                values.append(int(st.session_state["saved_aptitude_responses"][code][number]))
+        result[code] = values
+    return result
 
 
 def finance_inputs() -> dict[str, str]:
@@ -91,8 +114,7 @@ def render_intro() -> None:
     st.title("🎓 UniMatch: แบบทดสอบเลือกคณะเรียนต่อ")
     st.subheader("ใช้ Cognitive Functions + ความสนใจ/ความถนัด + งบประมาณ เพื่อหาเส้นทางที่น่าไปต่อ")
     st.info(
-        "ผลลัพธ์เป็นแนวทางสำรวจตนเอง ไม่ใช่การวินิจฉัยบุคลิกภาพหรือเกณฑ์รับเข้าจริง "
-        "ควรตรวจสอบคุณสมบัติ TCAS ค่าเทอม และหลักสูตรจากมหาวิทยาลัยโดยตรงก่อนตัดสินใจ"
+        "ผลลัพธ์เป็นแนวทางสำรวจตนเอง ไม่ใช่การวินิจฉัยบุคลิกภาพหรือเกณฑ์รับเข้ามหาวิทยาลัย และควรตรวจสอบคุณสมบัติ TCAS ค่าเทอม และหลักสูตรจากมหาวิทยาลัยโดยตรงก่อนการตัดสินใจ"
     )
     st.markdown(
         """
@@ -108,7 +130,7 @@ def render_intro() -> None:
     st.subheader("หลักตรรกะที่แอปใช้")
     st.latex(r"\mathrm{Dom}=A \iff \forall f\; \mathrm{Score}(A) \geq \mathrm{Score}(f)")
     st.latex(r"(\mathrm{MBTI}_1 \lor \mathrm{MBTI}_2 \lor \cdots)\ \land\ (M > 60\%)\ \Rightarrow\ \text{แนะนำคณะ}")
-    st.caption("กรณีคะแนนเสมอ แอปจะแจ้งและใช้คะแนน Auxiliary → Tertiary → Inferior เป็นตัวตัดสินที่ทำซ้ำได้")
+    st.caption("กรณีคะแนนเสมอ แอปจะแจ้งและใช้คะแนน Auxiliary → Tertiary → Inferior เป็นตัวตัดสินผล")
 
 
 def render_cognitive() -> None:
@@ -125,7 +147,7 @@ def render_cognitive() -> None:
                     st.session_state[key] = st.session_state.saved_cognitive_responses[function][number - 1]
                 st.select_slider(
                     f"{number}. {question}",
-                    options=list(LIKERT_LABELS),
+                    options=list(LIKERT_LABELS.keys()),
                     format_func=lambda value: LIKERT_LABELS[value],
                     key=key,
                 )
@@ -138,8 +160,9 @@ def render_cognitive() -> None:
 def render_aptitude() -> None:
     st.title("ส่วนที่ 2 — ความสนใจและความถนัด (30 ข้อ)")
     st.write("แต่ละหมวดมี 6 ข้อ คะแนนเต็มหมวดละ 30 คะแนน แล้วแปลงเป็นเปอร์เซ็นต์")
-    tabs = st.tabs([f"{code}: {item['name']}" for code, item in APTITUDE_CATEGORIES.items()])
-    for (code, item), tab in zip(APTITUDE_CATEGORIES.items(), tabs):
+    items = list(APTITUDE_CATEGORIES.items())
+    tabs = st.tabs([f"{code}: {item['name']}" for code, item in items])
+    for (code, item), tab in zip(items, tabs):
         with tab:
             st.subheader(item["name"])
             st.caption(item["short"])
@@ -149,7 +172,7 @@ def render_aptitude() -> None:
                     st.session_state[key] = st.session_state.saved_aptitude_responses[code][number - 1]
                 st.select_slider(
                     f"{number}. {question}",
-                    options=list(LIKERT_LABELS),
+                    options=list(LIKERT_LABELS.keys()),
                     format_func=lambda value: LIKERT_LABELS[value],
                     key=key,
                 )
@@ -184,7 +207,7 @@ def render_finance() -> None:
     )
     st.selectbox(
         "เป้าหมายหลังเรียนจบที่ให้ความสำคัญมากที่สุด",
-        ["ความมั่นคงและสวัสดิการ", "รายได้เร็ว / คืนทุนไว", "อิสระและความเป็นตัวเอง"],
+        ["ความมั่นคงและสวัสดิการ", "รายได้เร็ว / คืนทุนไว", "อิสระและความเป็นตัวของตัวเอง"],
         key="finance_career_goal",
     )
     st.radio("ภาระหลังเรียนจบ", ["มีภาระ ต้องรีบหางาน", "ไม่มีภาระเร่งด่วน"], key="finance_financial_urgency")
@@ -214,7 +237,7 @@ def render_financial_summary(summary: dict) -> None:
     st.markdown("**รายการที่ควรทำต่อ**")
     for action in summary["actions"]:
         st.write(f"- {action}")
-    st.caption("ค่าเทอมเป็นข้อมูลประมาณการต่อเทอม ยังไม่รวมค่าหอพัก ค่าเดินทาง ค่าครองชีพ และอุปกรณ์")
+    st.caption("ค่าเทอมเป็นข้อมูลประมาณการต่อเทอม ยังไม่รวมค่าหอพัก ค่าเดินทาง อุปกรณ์ หรือค่าครองชีพ")
 
 
 def render_mbti_explanation(result, scores: dict[str, int]) -> None:
@@ -232,13 +255,13 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
         "Tertiary": "กระบวนการลำดับสามที่พัฒนาเด่นขึ้นตามประสบการณ์",
         "Inferior": "กระบวนการตรงข้ามของ Dominant; มักเป็นพื้นที่ท้าทายและพัฒนาได้",
     }
-    for column, role, function in zip(cols, descriptions, (dominant, auxiliary, tertiary, inferior)):
+    for column, role, function in zip(cols, list(descriptions.keys()), (dominant, auxiliary, tertiary, inferior)):
         with column:
             st.markdown(f"**{role}: {function}**")
             st.caption(descriptions[role])
             st.metric("คะแนน", f"{scores[function]} / 50")
-    if result.used_tiebreak:
-        st.warning("มีคะแนน Dominant หรือ Auxiliary เสมอกัน จึงใช้ลำดับ Tertiary/Inferior เป็นตัวตัดสินผลที่แสดง")
+    if getattr(result, "used_tiebreak", False):
+        st.warning("มีคะแนน Dominant หรือ Auxiliary เสมอกัน จึงใช้ลำดับ Tertiary/Inferior เป็นตัวตัดสินผล")
 
     # อธิบายหลักตรรกศาสตร์ของฟังก์ชันรอง (Aux) ในรูปแบบประพจน์เชิงตรรกะ
     st.subheader("อธิบายหลักตรรกศาสตร์ของฟังก์ชันรอง (Aux) เป็นประพจน์")
@@ -259,7 +282,7 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
    - หากมี a1, a2 ∈ CandidateAux(d) ที่ Score(a1) = Score(a2) จะใช้ลำดับต่อไปนี้เป็นตัวตัดสินแบบ deterministic:
      1) เปรียบเทียบคะแนน Tertiary (Tert) ของ stack(s) ที่สอดคล้องกับแต่ละ candidate
      2) หากยังเสมอ ให้เปรียบเทียบ Inferior ตาม stack ที่สอดคล้อง
-     3) หากยังเสมอ ระบบจะทำการเลือกตามกฎที่ทำซ้ำได้ (deterministic) และแจ้งผู้ใช้ว่าเกิด tie
+     3) หากยังเสมอ ระบบจะทำการเลือกตามกฎที่ทำซ้ำได้ (deterministic) และแจ้งผู้ใช้ว่าอาจมีความไม่แน่นอน
 6. นิยามประเภท (Type) เป็นผลของการรวมประพจน์:
    - Type = mbti ⇔ (Dom = d) ∧ (Aux = a*) ∧ (Tert = t) ∧ (Inf = i)
         """
@@ -278,7 +301,7 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
         for mbti, (title, strength, caution) in MBTI_PROFILES.items():
             st.markdown(f"**{mbti} — {title}:** เด่นเรื่อง {strength}; ควรระวัง {caution}.")
     with st.expander("ดูประพจน์ของ MBTI ทั้ง 16 ประเภท"):
-        st.caption("รูปแบบนี้บอก canonical stack ของแต่ละประเภท; แอปหาคะแนน Dominant ก่อน แล้วใช้ Auxiliary แยกสองประเภทที่มี Dominant เดียวกัน")
+        st.caption("รูปแบบนี้บอก canonical stack ของแต่ละประเภท; แอปหาคะแนน Dominant ก่อน แล้วใช้ Auxiliary เพื่อเลือก stack ที่ตรงที่สุด")
         for mbti, stack in MBTI_STACKS.items():
             dominant_item, auxiliary_item, tertiary_item, inferior_item = stack
             st.code(
@@ -333,7 +356,7 @@ def render_summary() -> None:
             with st.expander(f"{index}. {rule['faculty']}", expanded=index <= 3):
                 st.code(logic_expression(rule), language="text")
                 details = [
-                    {"ประพจน์": f"{item['category']} > {item['minimum']}%", "คะแนนของคุณ": f"{item['actual']}%", "เป็นจริง": "จริง" if item["passed"] else "เท็จ"}
+                    {"ประพจน์": f"{item['category']} > {item['minimum']}%", "คะแนนของคุณ": f"{item['actual']}%", "เป็นจริง": "จริง" if item.get('passed') else "เท็จ"}
                     for item in rule["condition_results"]
                 ]
                 st.dataframe(pd.DataFrame(details), hide_index=True, use_container_width=True)
@@ -342,10 +365,10 @@ def render_summary() -> None:
                 for option in university_options(rule["group"], finance["budget"]):
                     st.write(f"- [{BUDGET_LABELS[option['tier']]}] {option['university']} — {option['estimate']}")
     else:
-        st.info("ยังไม่มีคณะที่ผ่านทุกประพจน์แบบ strict (`>`). นี่ไม่ได้แปลว่าเรียนไม่ได้ แต่บอกว่าคะแนนยังไม่ผ่านเกณฑ์ตั้งต้นของกฎนี้ครบทุกข้อ")
+        st.info("ยังไม่มีคณะที่ผ่านทุกประพจน์แบบ strict (`>`). นี่ไม่ได้แปลว่าเรียนไม่ได้ — เป็นเพียงเกณฑ์เชิง heuristic")
         st.subheader("คณะที่ใกล้เคียงที่สุด")
         nearby = rank_nearby_faculties(mbti_result.mbti, aptitude)
-        st.dataframe(pd.DataFrame([{"คณะ / สาขา": item["faculty"], "ความเข้ากันโดยประมาณ": f"{item['compatibility']}%"} for item in nearby]), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame([{"คณะ / สาขา": item["faculty"], "ความเข้ากันโดยประมาณ": f"{item['compatibility']}%"} for item in nearby]), use_container_width=True, hide_index=True)
 
     st.divider()
     report = {
@@ -357,7 +380,7 @@ def render_summary() -> None:
         "matched_faculties": [item["faculty"] for item in matches],
     }
     st.download_button("ดาวน์โหลดผลลัพธ์ JSON", data=json.dumps(report, ensure_ascii=False, indent=2), file_name="unimatch-result.json", mime="application/json")
-    st.caption("ตัวอย่างค่าเทอมเป็นข้อมูลประมาณการจากชุดข้อมูลเริ่มต้นของโปรเจกต์ ไม่รวมค่าครองชีพและอาจเปลี่ยนแปลงได้")
+    st.caption("ตัวอย่างค่าเทอมเป็นข้อมูลประมาณการจากชุดข้อมูลเริ่มต้นของโปรเจกต์")
 
 
 ensure_state()
