@@ -486,3 +486,4 @@ def render_faculty_detail():
     if st.button("ปิด"):
         st.session_state.show_faculty_detail = False
         st.rerun()
+        st.rerun()
