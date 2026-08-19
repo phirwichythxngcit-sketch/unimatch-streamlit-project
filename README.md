@@ -68,6 +68,7 @@ project/
 │   └── database.py           # SQLite Database Layer
 │
 ├── ui/
+│   ├── __init__.py
 │   ├── assessment.py         # แบบประเมิน (MBTI + Interest + Financial)
 │   ├── result.py             # ผลการประเมิน
 │   ├── dashboard.py          # Dashboard สถิติ
