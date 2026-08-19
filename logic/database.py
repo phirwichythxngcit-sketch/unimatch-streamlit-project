@@ -13,8 +13,8 @@ DB_PATH = DB_DIR / "app.db"
 class Database:
     """จัดการฐานข้อมูล SQLite"""
 
-    def __init__(self, db_path: str = DB_PATH):
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    def __init__(self, db_path: str = str(DB_PATH)):
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
         self._init_db()
 
