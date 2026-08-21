@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from data import APTITUDE_CATEGORIES, FUNCTION_ORDER
 from logic import (
     aptitude_summary,
