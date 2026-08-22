@@ -25,29 +25,47 @@ from logic import (
     rank_nearby_faculties,
     university_options,
 )
+from response_state import answer_key, initialize_answer_store, persist_widget_value, widget_key
 
 st.set_page_config(page_title="UniMatch — เลือกคณะด้วยตรรกศาสตร์", page_icon="🎓", layout="wide")
 
 APTITUDE_QUESTION_COUNT = len(next(iter(APTITUDE_CATEGORIES.values()))["questions"])
 APTITUDE_MAX_SCORE = APTITUDE_QUESTION_COUNT * max(LIKERT_LABELS)
 APTITUDE_TOTAL_QUESTIONS = sum(len(item["questions"]) for item in APTITUDE_CATEGORIES.values())
+COGNITIVE_ANSWER_STORE = "cognitive_answers"
+APTITUDE_ANSWER_STORE = "aptitude_answers"
 
 
 def ensure_state() -> None:
     st.session_state.setdefault("cognitive_done", False)
     st.session_state.setdefault("aptitude_done", False)
     st.session_state.setdefault("budget", "medium")
-    for function, item in COGNITIVE_FUNCTIONS.items():
-        for number in range(len(item["questions"])):
-            st.session_state.setdefault(f"cf_{function}_{number}", 3)
-    for code, item in APTITUDE_CATEGORIES.items():
-        for number in range(len(item["questions"])):
-            st.session_state.setdefault(f"apt_{code}_{number}", 3)
+    initialize_answer_store(
+        st.session_state,
+        COGNITIVE_ANSWER_STORE,
+        (
+            answer_key("cf", function, number)
+            for function, item in COGNITIVE_FUNCTIONS.items()
+            for number in range(len(item["questions"]))
+        ),
+    )
+    initialize_answer_store(
+        st.session_state,
+        APTITUDE_ANSWER_STORE,
+        (
+            answer_key("apt", code, number)
+            for code, item in APTITUDE_CATEGORIES.items()
+            for number in range(len(item["questions"]))
+        ),
+    )
 
 
 def cognitive_responses() -> dict[str, list[int]]:
     return {
-        function: [st.session_state[f"cf_{function}_{number}"] for number in range(10)]
+        function: [
+            st.session_state[COGNITIVE_ANSWER_STORE][answer_key("cf", function, number)]
+            for number in range(len(COGNITIVE_FUNCTIONS[function]["questions"]))
+        ]
         for function in FUNCTION_ORDER
     }
 
@@ -55,11 +73,16 @@ def cognitive_responses() -> dict[str, list[int]]:
 def aptitude_responses() -> dict[str, list[int]]:
     return {
         code: [
-            st.session_state[f"apt_{code}_{number}"]
+            st.session_state[APTITUDE_ANSWER_STORE][answer_key("apt", code, number)]
             for number in range(len(item["questions"]))
         ]
         for code, item in APTITUDE_CATEGORIES.items()
     }
+
+
+def persist_answer(store_name: str, saved_key: str, input_key: str) -> None:
+    """Save an answer before Streamlit removes the widget during navigation."""
+    persist_widget_value(st.session_state, store_name, saved_key, input_key)
 
 def render_intro() -> None:
     st.title("🎓 UniMatch: แบบทดสอบเลือกคณะเรียนต่อ")
@@ -94,11 +117,16 @@ def render_cognitive() -> None:
             item = COGNITIVE_FUNCTIONS[function]
             st.subheader(item["name_th"])
             for number, question in enumerate(item["questions"], start=1):
+                saved_key = answer_key("cf", function, number - 1)
+                input_key = widget_key(saved_key)
                 st.select_slider(
                     f"{number}. {question}",
                     options=list(LIKERT_LABELS),
                     format_func=lambda value: LIKERT_LABELS[value],
-                    key=f"cf_{function}_{number - 1}",
+                    value=st.session_state[COGNITIVE_ANSWER_STORE][saved_key],
+                    key=input_key,
+                    on_change=persist_answer,
+                    args=(COGNITIVE_ANSWER_STORE, saved_key, input_key),
                 )
     if st.button("คำนวณผล Cognitive Functions", type="primary"):
         st.session_state.cognitive_done = True
@@ -124,11 +152,16 @@ def render_aptitude() -> None:
             st.subheader(item["name"])
             st.caption(item["short"])
             for number, question in enumerate(item["questions"], start=1):
+                saved_key = answer_key("apt", code, number - 1)
+                input_key = widget_key(saved_key)
                 st.select_slider(
                     f"{number}. {question}",
                     options=list(LIKERT_LABELS),
                     format_func=lambda value: LIKERT_LABELS[value],
-                    key=f"apt_{code}_{number - 1}",
+                    value=st.session_state[APTITUDE_ANSWER_STORE][saved_key],
+                    key=input_key,
+                    on_change=persist_answer,
+                    args=(APTITUDE_ANSWER_STORE, saved_key, input_key),
                 )
     if st.button("สรุปผลความสนใจและความถนัด", type="primary"):
         st.session_state.aptitude_done = True
@@ -300,3 +333,4 @@ elif page == "3. ทุนและงบประมาณ":
     render_finance()
 else:
     render_summary()
+
