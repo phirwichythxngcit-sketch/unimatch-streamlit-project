@@ -22,10 +22,10 @@ def function_totals(responses: Mapping[str, Sequence[int]]) -> dict[str, int]:
 
 
 def derive_mbti(scores: Mapping[str, int]) -> MbtiResult:
-    """หา MBTI จาก dominant ที่สูงสุด แล้วเลือก auxiliary ตามคะแนนสูงกว่า.
+    """หา MBTI ตามลำดับ Dominant → Auxiliary → Tertiary → Inferior.
 
-    หาก dominant เสมอกัน จะเลือก stack ที่มีน้ำหนัก 4:3:2:1 สูงสุดเพื่อให้ได้ผล
-    เดียวกันทุกครั้ง และแจ้งว่ามีการใช้ตัวตัดสินในผลลัพธ์.
+    เมื่อคะแนนตำแหน่งหนึ่งเสมอกัน ระบบจึงเปรียบเทียบตำแหน่งถัดไปตามลำดับนี้
+    เพื่อให้ผลลัพธ์มีเงื่อนไขชัดเจนและทำซ้ำได้.
     """
     if set(scores) != set(FUNCTION_ORDER):
         raise ValueError("scores ต้องมีครบ 8 ฟังก์ชัน: Ne, Ni, Se, Si, Te, Ti, Fe, Fi")
@@ -36,12 +36,11 @@ def derive_mbti(scores: Mapping[str, int]) -> MbtiResult:
         for mbti, stack in MBTI_STACKS.items()
         if stack[0] in dominant_ties
     ]
-    # Dominant มาก่อน, Auxiliary เป็นตัวแบ่งสองประเภทที่ dominant เดียวกัน,
-    # และ Tertiary/Inferior ใช้ยุติ tie อย่างเบากว่า.
+    # เปรียบเทียบตามลำดับ Dom → Aux → Tert → Inf โดยตรง
+    # จึงอธิบายเงื่อนไขของแต่ละตำแหน่งให้ผู้ใช้ตรวจตามได้
     def stack_affinity(item: tuple[str, tuple[str, str, str, str]]) -> tuple[int, int, int, int, str]:
         mbti, stack = item
-        weighted = sum(weight * scores[function] for weight, function in zip((4, 3, 2, 1), stack))
-        return (scores[stack[0]], scores[stack[1]], weighted, scores[stack[2]], mbti)
+        return (*[scores[function] for function in stack], mbti)
 
     mbti, stack = max(candidates, key=stack_affinity)
     return MbtiResult(
