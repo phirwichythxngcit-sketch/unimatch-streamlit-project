@@ -18,15 +18,19 @@ def test_ni_and_fe_select_infj_stack():
     assert result.stack == ("Ni", "Fe", "Ti", "Se")
 
 
-def test_subject_percentages_and_strict_matching():
-    responses = {code: [3] * 6 for code in APTITUDE_CATEGORIES}
-    responses["M"] = [5] * 6
-    responses["S"] = [4] * 6
+def test_twenty_aptitude_questions_and_strict_matching():
+    assert all(len(category["questions"]) == 20 for category in APTITUDE_CATEGORIES.values())
+
+    responses = {code: [3] * len(category["questions"]) for code, category in APTITUDE_CATEGORIES.items()}
+    responses["M"] = [5] * len(APTITUDE_CATEGORIES["M"]["questions"])
+    responses["S"] = [4] * len(APTITUDE_CATEGORIES["S"]["questions"])
+
     aptitude = aptitude_summary(responses)
+
+    assert aptitude["M"]["total"] == 100
     assert aptitude["M"]["percent"] == 100
     assert aptitude["S"]["percent"] == 80
     assert "วิศวกรรมคอมพิวเตอร์ / ซอฟต์แวร์" in {item["faculty"] for item in match_faculties("INTP", aptitude)}
-
 
 def test_higher_budget_includes_more_tiers():
     assert len(university_options("STEM", "high")) > len(university_options("STEM", "low"))
