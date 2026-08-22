@@ -34,3 +34,17 @@ def test_twenty_aptitude_questions_and_strict_matching():
 
 def test_higher_budget_includes_more_tiers():
     assert len(university_options("STEM", "high")) > len(university_options("STEM", "low"))
+
+
+def test_tertiary_score_breaks_an_auxiliary_tie():
+    scores = {function: 10 for function in FUNCTION_ORDER}
+    scores.update({"Ne": 50, "Ti": 40, "Fi": 40, "Te": 45, "Fe": 20})
+    result = derive_mbti(scores)
+    assert result.mbti == "ENFP"
+
+
+def test_inferior_score_breaks_a_remaining_stack_tie():
+    scores = {function: 10 for function in FUNCTION_ORDER}
+    scores.update({"Ne": 50, "Se": 50, "Ti": 40, "Fe": 30, "Ni": 20})
+    result = derive_mbti(scores)
+    assert result.mbti == "ESTP"
