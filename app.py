@@ -84,6 +84,7 @@ def persist_answer(store_name: str, saved_key: str, input_key: str) -> None:
     """Save an answer before Streamlit removes the widget during navigation."""
     persist_widget_value(st.session_state, store_name, saved_key, input_key)
 
+
 def render_intro() -> None:
     st.title("🎓 UniMatch: แบบทดสอบเลือกคณะเรียนต่อ")
     st.subheader("ใช้ Cognitive Functions + ความสนใจ/ความถนัด + งบประมาณ เพื่อหาเส้นทางที่น่าไปต่อ")
@@ -333,4 +334,3 @@ elif page == "3. ทุนและงบประมาณ":
     render_finance()
 else:
     render_summary()
-
