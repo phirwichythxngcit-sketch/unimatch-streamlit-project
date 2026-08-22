@@ -28,6 +28,10 @@ from logic import (
 
 st.set_page_config(page_title="UniMatch — เลือกคณะด้วยตรรกศาสตร์", page_icon="🎓", layout="wide")
 
+APTITUDE_QUESTION_COUNT = len(next(iter(APTITUDE_CATEGORIES.values()))["questions"])
+APTITUDE_MAX_SCORE = APTITUDE_QUESTION_COUNT * max(LIKERT_LABELS)
+APTITUDE_TOTAL_QUESTIONS = sum(len(item["questions"]) for item in APTITUDE_CATEGORIES.values())
+
 
 def ensure_state() -> None:
     st.session_state.setdefault("cognitive_done", False)
@@ -50,10 +54,12 @@ def cognitive_responses() -> dict[str, list[int]]:
 
 def aptitude_responses() -> dict[str, list[int]]:
     return {
-        code: [st.session_state[f"apt_{code}_{number}"] for number in range(6)]
-        for code in APTITUDE_CATEGORIES
+        code: [
+            st.session_state[f"apt_{code}_{number}"]
+            for number in range(len(item["questions"]))
+        ]
+        for code, item in APTITUDE_CATEGORIES.items()
     }
-
 
 def render_intro() -> None:
     st.title("🎓 UniMatch: แบบทดสอบเลือกคณะเรียนต่อ")
@@ -67,8 +73,8 @@ def render_intro() -> None:
 **วิธีใช้**
 
 1. ทำแบบประเมิน Cognitive Functions 80 ข้อ (8 ฟังก์ชัน × 10 ข้อ)
-2. ทำแบบประเมินความสนใจ/ความถนัด 30 ข้อ (5 หมวด × 6 ข้อ)
-3. เลือกระดับงบประมาณและเงื่อนไขการเงิน
+2. ทำแบบประเมินความสนใจ/ความถนัด 100 ข้อ (5 หมวด × 20 ข้อ)
+3. เลือกระดับทุน/งบประมาณที่มี
 4. เปิดหน้าสรุปเพื่อดู MBTI, ประพจน์ที่เป็นจริง และคณะ/มหาวิทยาลัยตัวอย่าง
         """
     )
@@ -110,8 +116,8 @@ def render_cognitive() -> None:
 
 
 def render_aptitude() -> None:
-    st.title("ส่วนที่ 2 — ความสนใจและความถนัด (30 ข้อ)")
-    st.write("แต่ละหมวดมี 6 ข้อ คะแนนเต็มหมวดละ 30 คะแนน แล้วแปลงเป็นเปอร์เซ็นต์")
+    st.title(f"ส่วนที่ 2 — ความสนใจและความถนัด ({APTITUDE_TOTAL_QUESTIONS} ข้อ)")
+    st.write(f"แต่ละหมวดมี {APTITUDE_QUESTION_COUNT} ข้อ คะแนนเต็มหมวดละ {APTITUDE_MAX_SCORE} คะแนน แล้วแปลงเป็นเปอร์เซ็นต์")
     tabs = st.tabs([f"{code}: {item['name']}" for code, item in APTITUDE_CATEGORIES.items()])
     for (code, item), tab in zip(APTITUDE_CATEGORIES.items(), tabs):
         with tab:
@@ -130,34 +136,25 @@ def render_aptitude() -> None:
     if st.session_state.aptitude_done:
         summary = aptitude_summary(aptitude_responses())
         st.dataframe(
-            pd.DataFrame(summary.values()).rename(columns={"name": "หมวด", "total": "คะแนน / 30", "percent": "%", "zone": "การแปลผล"}),
+            pd.DataFrame(summary.values()).rename(columns={"name": "หมวด", "total": f"คะแนน / {APTITUDE_MAX_SCORE}", "percent": "%", "zone": "การแปลผล"}),
             use_container_width=True,
             hide_index=True,
         )
 
 
 def render_finance() -> None:
-    st.title("ส่วนที่ 3 — การบริหารและการเงิน")
-    st.write("เลือกข้อมูลเพื่อกรองตัวอย่างมหาวิทยาลัยให้สอดคล้องกับข้อจำกัดของคุณ")
+    st.title("ส่วนที่ 3 — ทุนและงบประมาณ")
+    st.write("เลือกช่วงทุนหรือเงินที่มีโดยประมาณ เพื่อกรองตัวอย่างมหาวิทยาลัยให้เหมาะกับงบของคุณ")
     st.session_state.budget = st.radio(
-        "งบประมาณค่าใช้จ่ายทางการศึกษาต่อเทอม",
+        "คุณมีทุนหรือเงินสำหรับค่าใช้จ่ายทางการศึกษาต่อเทอมอยู่ประมาณไหน?",
         options=["low", "medium", "high"],
         format_func=lambda item: {
-            "low": "งบน้อย — โดยประมาณไม่เกิน 20,000 บาท/เทอม หรือเน้นทุน/กยศ.",
-            "medium": "งบปานกลาง — โดยประมาณ 17,000–45,000 บาท/เทอม",
-            "high": "งบมาก — ตั้งแต่ประมาณ 60,000 บาท/เทอม หรือหลักสูตรนานาชาติ/เอกชน",
+            "low": "งบน้อย — ต้องการตัวเลือกค่าใช้จ่ายต่ำ หรือใช้ทุน/กยศ.",
+            "medium": "งบปานกลาง — เลือกได้ทั้งมหาวิทยาลัยรัฐและหลักสูตรทั่วไป",
+            "high": "งบมาก — เปิดกว้างสำหรับหลักสูตรค่าใช้จ่ายสูง",
         }[item],
     )
-    st.selectbox(
-        "เป้าหมายหลังเรียนจบที่ให้ความสำคัญมากที่สุด",
-        ["ความมั่นคงและสวัสดิการ", "รายได้เร็ว / คืนทุนไว", "อิสระและความเป็นตัวเอง"],
-        key="career_goal",
-    )
-    st.radio("ภาระหลังเรียนจบ", ["มีภาระ ต้องรีบหางาน", "ไม่มีภาระเร่งด่วน"], key="financial_urgency")
-    st.radio("ทุนแบบมีเงื่อนไขผูกพัน", ["สนใจมาก", "ไม่สนใจ / สนใจเฉพาะทุนมอบเปล่า"], key="bonded_scholarship")
-    st.radio("ข้อจำกัดเรื่องที่อยู่/การเดินทาง", ["จำเป็นต้องเรียนใกล้บ้าน", "ยืดหยุ่น ไปเรียนต่างจังหวัดได้"], key="travel_constraint")
-    st.success("ข้อมูลการเงินจะถูกใช้เพื่อแสดงระดับค่าเทอมที่อยู่ในขอบเขตงบของคุณ")
-
+    st.success("ระบบจะใช้คำตอบนี้เพื่อแสดงตัวอย่างมหาวิทยาลัยที่อยู่ในระดับงบของคุณ")
 
 def render_mbti_explanation(result, scores: dict[str, int]) -> None:
     dominant, auxiliary, tertiary, inferior = result.stack
@@ -182,19 +179,34 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
     if result.used_tiebreak:
         st.warning("มีคะแนน Dominant หรือ Auxiliary เสมอกัน จึงใช้ลำดับ Tertiary/Inferior เป็นตัวตัดสินผลที่แสดง")
 
-    st.subheader("อธิบายตรรกศาสตร์ที่ใช้หา MBTI")
+    st.subheader("ตรรกศาสตร์: วิธีเลือกฟังก์ชันรอง (Aux)")
     st.markdown(
-        f"""
-1. กำหนด `Score(f)` เป็นคะแนนรวมของ function `f` จากคำตอบ 10 ข้อ
-2. `Dom = {dominant}` เป็นจริง เพราะ `{scores[dominant]}` เป็นค่าสูงสุดของทุก function
-3. เมื่อ `Dom = {dominant}` ประเภทที่เป็นไปได้จะถูกจำกัดเหลือสอง stack ที่มี Dominant เดียวกัน แล้วเปรียบเทียบ Auxiliary
-4. ผลที่เลือกคือ `{result.mbti}` มี stack `{dominant} → {auxiliary} → {tertiary} → {inferior}` และใช้กฎคู่ตรงข้าม: Dominant กับ Inferior เป็นคู่แกนเดียวกัน (เช่น `Ne ⇔ Si`, `Ni ⇔ Se`, `Te ⇔ Fi`, `Ti ⇔ Fe`)
+        """
+หลังจากระบบหาฟังก์ชันหลัก (Dominant) ได้แล้ว จะเหลือประเภทที่เป็นไปได้ **2 ตัวเลือก** ที่ต้องใช้
+ฟังก์ชันรอง (Aux) ช่วยตัดสิน ให้เรียกตัวเลือกนั้นว่า **A** และ **B** โดยไม่ต้องจำชื่อฟังก์ชันจริง
+
+- `P`: คะแนน Aux ของตัวเลือก A มากกว่าคะแนน Aux ของตัวเลือก B
+- `Q`: ระบบเลือกประเภท A
+- `R`: คะแนน Aux ของตัวเลือก A เท่ากับคะแนน Aux ของตัวเลือก B
+- `S`: ระบบเปรียบเทียบคะแนนลำดับถัดไปเพื่อแก้กรณีคะแนนเสมอ
+
+จึงเขียนเป็นประพจน์ได้ว่า
+
+- `P → Q` อ่านว่า “ถ้า Aux ของ A มากกว่า ระบบจะเลือก A”
+- `¬P ∧ ¬R → ¬Q` อ่านว่า “ถ้า Aux ของ A น้อยกว่า B ระบบจะไม่เลือก A”
+- `R → S` อ่านว่า “ถ้า Aux เท่ากัน ระบบจึงดูคะแนนลำดับถัดไป”
+
+สรุปง่าย ๆ: **Aux คือคะแนนที่ใช้เลือกระหว่างตัวเลือก A กับ B** และจะใช้คะแนนลำดับถัดไปเฉพาะเมื่อ Aux เท่ากันเท่านั้น
         """
     )
     st.code(
-        f"Dom={dominant} ⇔ ∀f Score({dominant}) ≥ Score(f)\n"
-        f"Dom={dominant} ⇒ Aux ∈ {{…}}\n"
-        f"Type={result.mbti} ⇒ {dominant} → {auxiliary} → {tertiary} → {inferior}",
+        "P: Aux(A) > Aux(B)\n"
+        "Q: เลือกประเภท A\n"
+        "R: Aux(A) = Aux(B)\n"
+        "S: เปรียบเทียบคะแนนลำดับถัดไป\n\n"
+        "P → Q\n"
+        "¬P ∧ ¬R → ¬Q\n"
+        "R → S",
         language="text",
     )
     with st.expander("ดูคำอธิบายทั้ง 16 MBTI"):
@@ -225,7 +237,16 @@ def render_summary() -> None:
     st.divider()
     st.subheader("ผลความสนใจและความถนัด")
     aptitude_table = pd.DataFrame(
-        [{"รหัส": code, "หมวด": value["name"], "คะแนน / 30": value["total"], "%": value["percent"], "โซน": value["zone"]} for code, value in aptitude.items()]
+        [
+            {
+                "รหัส": code,
+                "หมวด": value["name"],
+                f"คะแนน / {APTITUDE_MAX_SCORE}": value["total"],
+                "%": value["percent"],
+                "โซน": value["zone"],
+            }
+            for code, value in aptitude.items()
+        ]
     )
     st.dataframe(aptitude_table, use_container_width=True, hide_index=True)
 
@@ -266,7 +287,7 @@ def render_summary() -> None:
 ensure_state()
 with st.sidebar:
     st.title("UniMatch")
-    page = st.radio("เมนู", ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "3. การเงิน", "สรุปผล"])
+    page = st.radio("เมนู", ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "3. ทุนและงบประมาณ", "สรุปผล"])
     st.caption(f"Cognitive: {'✓' if st.session_state.cognitive_done else '○'} | ความถนัด: {'✓' if st.session_state.aptitude_done else '○'}")
 
 if page == "เริ่มต้น":
@@ -275,7 +296,7 @@ elif page == "1. Cognitive Functions":
     render_cognitive()
 elif page == "2. ความถนัด":
     render_aptitude()
-elif page == "3. การเงิน":
+elif page == "3. ทุนและงบประมาณ":
     render_finance()
 else:
     render_summary()
