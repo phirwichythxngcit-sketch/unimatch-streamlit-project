@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from data import APTITUDE_CATEGORIES, FACULTY_RULES, FUNCTION_ORDER, MBTI_STACKS, UNIVERSITY_OPTIONS
+from data import APTITUDE_CATEGORIES, FACULTY_RULES, FUNCTION_ORDER, LIKERT_LABELS, MBTI_STACKS, UNIVERSITY_OPTIONS
 
 
 @dataclass(frozen=True)
@@ -53,15 +53,16 @@ def derive_mbti(scores: Mapping[str, int]) -> MbtiResult:
 
 
 def aptitude_summary(responses: Mapping[str, Sequence[int]]) -> dict[str, dict[str, int | str]]:
-    """รวมได้ 6–30 คะแนนต่อหมวดและคิดเป็นเปอร์เซ็นต์."""
+    """รวมคะแนนและคิดเป็นเปอร์เซ็นต์ตามจำนวนคำถามจริงของแต่ละหมวด."""
     result: dict[str, dict[str, int | str]] = {}
+    maximum_response = max(LIKERT_LABELS)
     for code, category in APTITUDE_CATEGORIES.items():
         total = sum(responses.get(code, ()))
-        percent = round((total / 30) * 100) if total else 0
-        zone = "พื้นที่เด่น" if total >= 24 else "พื้นที่เสริม" if total >= 18 else "พื้นที่ที่พัฒนาได้"
+        maximum = len(category["questions"]) * maximum_response
+        percent = round((total / maximum) * 100) if maximum else 0
+        zone = "พื้นที่เด่น" if percent >= 80 else "พื้นที่เสริม" if percent >= 60 else "พื้นที่ที่พัฒนาได้"
         result[code] = {"name": category["name"], "total": total, "percent": percent, "zone": zone}
     return result
-
 
 def _rule_to_dict(rule: tuple) -> dict:
     faculty, group, mbti_set, conditions = rule
