@@ -179,41 +179,41 @@ def render_mbti_explanation(result, scores: dict[str, int]) -> None:
     if result.used_tiebreak:
         st.warning("มีคะแนน Dominant หรือ Auxiliary เสมอกัน จึงใช้ลำดับ Tertiary/Inferior เป็นตัวตัดสินผลที่แสดง")
 
-    st.subheader("ตรรกศาสตร์: วิธีเลือกฟังก์ชันรอง (Aux)")
+    st.subheader("ตรรกศาสตร์: เงื่อนไขหา MBTI (Dom → Aux → Tert → Inf)")
     st.markdown(
         """
-หลังจากระบบหาฟังก์ชันหลัก (Dominant) ได้แล้ว จะเหลือประเภทที่เป็นไปได้ **2 ตัวเลือก** ที่ต้องใช้
-ฟังก์ชันรอง (Aux) ช่วยตัดสิน ให้เรียกตัวเลือกนั้นว่า **A** และ **B** โดยไม่ต้องจำชื่อฟังก์ชันจริง
+ให้คิดว่า MBTI แต่ละประเภทเป็น “ชุดลำดับ” ของ 4 ตำแหน่ง ได้แก่ Dominant (Dom),
+Auxiliary (Aux), Tertiary (Tert) และ Inferior (Inf) ระบบเลือกชุดที่มีเงื่อนไขครบที่สุด
 
-- `P`: คะแนน Aux ของตัวเลือก A มากกว่าคะแนน Aux ของตัวเลือก B
-- `Q`: ระบบเลือกประเภท A
-- `R`: คะแนน Aux ของตัวเลือก A เท่ากับคะแนน Aux ของตัวเลือก B
-- `S`: ระบบเปรียบเทียบคะแนนลำดับถัดไปเพื่อแก้กรณีคะแนนเสมอ
+กำหนดให้ `T` คือ MBTI ตัวเลือกหนึ่ง และ `U` คือตัวเลือกอื่นที่กำลังเปรียบเทียบ
 
-จึงเขียนเป็นประพจน์ได้ว่า
+- `P_D(T)`: คะแนน Dom ของ T สูงที่สุดในทุกฟังก์ชัน
+- `P_A(T)`: เมื่อ Dom เท่ากัน คะแนน Aux ของ T สูงกว่าหรือเท่ากับ Aux ของ U
+- `P_T(T)`: ถ้า Dom และ Aux ยังเท่ากัน คะแนน Tert ของ T สูงกว่าหรือเท่ากับ Tert ของ U
+- `P_I(T)`: ถ้า Dom, Aux และ Tert ยังเท่ากัน คะแนน Inf ของ T สูงกว่าหรือเท่ากับ Inf ของ U
 
-- `P → Q` อ่านว่า “ถ้า Aux ของ A มากกว่า ระบบจะเลือก A”
-- `¬P ∧ ¬R → ¬Q` อ่านว่า “ถ้า Aux ของ A น้อยกว่า B ระบบจะไม่เลือก A”
-- `R → S` อ่านว่า “ถ้า Aux เท่ากัน ระบบจึงดูคะแนนลำดับถัดไป”
+จึงสรุปเงื่อนไขของตัวเลือก T ได้ว่า
 
-สรุปง่าย ๆ: **Aux คือคะแนนที่ใช้เลือกระหว่างตัวเลือก A กับ B** และจะใช้คะแนนลำดับถัดไปเฉพาะเมื่อ Aux เท่ากันเท่านั้น
+`MBTI = T ⇔ P_D(T) ∧ P_A(T) ∧ P_T(T) ∧ P_I(T)`
+
+อ่านว่า “ผลเป็น MBTI ประเภท T ก็ต่อเมื่อเงื่อนไขของ Dom, Aux, Tert และ Inf ของ T เป็นจริงครบ”
+โดยระบบเปรียบเทียบตามลำดับ **Dom → Aux → Tert → Inf**: ตำแหน่งก่อนหน้ามีความสำคัญกว่า
+ตำแหน่งถัดไป และจะดูตำแหน่งถัดไปเมื่อคะแนนก่อนหน้ายังเสมอกันเท่านั้น
         """
     )
     st.code(
-        "P: Aux(A) > Aux(B)\n"
-        "Q: เลือกประเภท A\n"
-        "R: Aux(A) = Aux(B)\n"
-        "S: เปรียบเทียบคะแนนลำดับถัดไป\n\n"
-        "P → Q\n"
-        "¬P ∧ ¬R → ¬Q\n"
-        "R → S",
+        "P_D(T): Score(Dom_T) = คะแนนสูงสุด\n"
+        "P_A(T): Dom เสมอ → Score(Aux_T) ≥ Score(Aux_U)\n"
+        "P_T(T): Dom และ Aux เสมอ → Score(Tert_T) ≥ Score(Tert_U)\n"
+        "P_I(T): Dom, Aux และ Tert เสมอ → Score(Inf_T) ≥ Score(Inf_U)\n\n"
+        "MBTI = T ⇔ P_D(T) ∧ P_A(T) ∧ P_T(T) ∧ P_I(T)",
         language="text",
     )
     with st.expander("ดูคำอธิบายทั้ง 16 MBTI"):
         for mbti, (title, strength, caution) in MBTI_PROFILES.items():
             st.markdown(f"**{mbti} — {title}:** เด่นเรื่อง {strength}; ควรระวัง {caution}.")
     with st.expander("ดูประพจน์ของ MBTI ทั้ง 16 ประเภท"):
-        st.caption("รูปแบบนี้บอก canonical stack ของแต่ละประเภท; แอปหาคะแนน Dominant ก่อน แล้วใช้ Auxiliary แยกสองประเภทที่มี Dominant เดียวกัน")
+        st.caption("แต่ละบรรทัดเป็นรูปแบบของ MBTI หนึ่งประเภท โดยผลจะเป็นประเภทนั้นเมื่อเงื่อนไข Dom, Aux, Tert และ Inf สอดคล้องกันครบ")
         for mbti, stack in MBTI_STACKS.items():
             dominant_item, auxiliary_item, tertiary_item, inferior_item = stack
             st.code(
