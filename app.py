@@ -103,12 +103,6 @@ def render_intro() -> None:
         """
     )
 
-    st.subheader("หลักตรรกะที่แอปใช้")
-    st.latex(r"\mathrm{Dom}=A \iff \forall f\; \mathrm{Score}(A) \geq \mathrm{Score}(f)")
-    st.latex(r"(\mathrm{MBTI}_1 \lor \mathrm{MBTI}_2 \lor \cdots)\ \land\ (M > 60\%)\ \Rightarrow\ \text{แนะนำคณะ}")
-    st.caption("กรณีคะแนนเสมอ แอปจะแจ้งและใช้คะแนน Auxiliary → Tertiary → Inferior เป็นตัวตัดสินที่ทำซ้ำได้")
-
-
 def render_cognitive() -> None:
     st.title("ส่วนที่ 1 — Cognitive Functions (80 ข้อ)")
     st.write("ให้คะแนนแต่ละข้อความจาก 1 ถึง 5 ตามความเป็นจริงของคุณ")
