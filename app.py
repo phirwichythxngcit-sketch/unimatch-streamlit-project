@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pandas as pd
 import streamlit as st
@@ -28,6 +29,7 @@ from logic import (
     university_options,
 )
 from response_state import answer_key, initialize_answer_store, persist_widget_value, widget_key
+from results_db import delete_result, list_results, save_result
 
 st.set_page_config(page_title="การพัฒนาเว็บแอปพลิเคชันวางแผนการศึกษาต่อด้วยกฎตรรกศาสตร์ ร่วมกับการวิเคราะห์บุคลิกภาพ MBTI และข้อจำกัดด้านทุนทรัพย์ทางการศึกษา สำหรับนักเรียนโรงเรียนสองพิทยาคม", page_icon="🎓", layout="wide")
 
@@ -42,6 +44,7 @@ def ensure_state() -> None:
     st.session_state.setdefault("cognitive_done", False)
     st.session_state.setdefault("aptitude_done", False)
     st.session_state.setdefault("budget", None)
+    st.session_state.setdefault("participant_name", "")
     initialize_answer_store(
         st.session_state,
         COGNITIVE_ANSWER_STORE,
@@ -94,6 +97,16 @@ def render_intro() -> None:
         "ผลลัพธ์เป็นแนวทางสำรวจตนเอง ไม่ใช่การวินิจฉัยบุคลิกภาพหรือเกณฑ์รับเข้าจริง "
         "ควรตรวจสอบคุณสมบัติ TCAS ค่าเทอม และหลักสูตรจากมหาวิทยาลัยโดยตรงก่อนตัดสินใจ"
     )
+    st.subheader("ข้อมูลผู้ทำแบบประเมิน")
+    st.text_input(
+        "ชื่อที่ต้องการแสดงในประวัติผลลัพธ์",
+        key="participant_name",
+        max_chars=100,
+        placeholder="เช่น สมชาย ใจดี",
+        help="ทุกคนจะเห็นชื่อนี้ในหน้าประวัติผลลัพธ์หลังคุณกดบันทึก",
+    )
+    st.caption("กรอกชื่อก่อนเริ่มทำแบบประเมิน เพื่อให้สามารถบันทึกผลเมื่อทำเสร็จได้")
+
     st.markdown(
         """
 **วิธีใช้**
@@ -397,6 +410,26 @@ def render_summary() -> None:
     render_budget_question()
 
     st.divider()
+    st.subheader("บันทึกผลเข้าในระบบ")
+    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, limit=1, budget=budget)
+    top_option = save_options[0] if save_options else None
+    if top_option:
+        st.write(f"รายการที่จะบันทึก: **{top_option['faculty']}** — ความเข้ากัน {top_option['compatibility']}%")
+        if st.button("บันทึกผลของฉัน", type="primary"):
+            try:
+                result_id = save_result(
+                    participant_name=st.session_state.participant_name,
+                    mbti=mbti_result.mbti,
+                    top_faculty=top_option["faculty"],
+                    compatibility=top_option["compatibility"],
+                    budget=BUDGET_LABELS[budget] if budget else None,
+                )
+                st.success(f"บันทึกผลสำเร็จ (รายการ #{result_id}) ดูได้จากเมนู “ประวัติผลลัพธ์”")
+            except ValueError as error:
+                st.error(str(error))
+    else:
+        st.warning("ยังไม่มีข้อมูลเพียงพอสำหรับบันทึกผล")
+
     report = {
         "mbti": mbti_result.mbti,
         "cognitive_stack": {"dominant": mbti_result.stack[0], "auxiliary": mbti_result.stack[1], "tertiary": mbti_result.stack[2], "inferior": mbti_result.stack[3]},
@@ -413,10 +446,61 @@ def render_summary() -> None:
     st.caption("ตัวอย่างค่าเทอมเป็นข้อมูลประมาณการจากชุดข้อมูลเริ่มต้นของโปรเจกต์ ไม่รวมค่าครองชีพและอาจเปลี่ยนแปลงได้")
 
 
+def _admin_password() -> str:
+    """Read the admin password without storing it in source control."""
+    configured = os.getenv("UNIMATCH_ADMIN_PASSWORD", "")
+    try:
+        return str(st.secrets.get("UNIMATCH_ADMIN_PASSWORD", configured))
+    except FileNotFoundError:
+        return configured
+
+
+def render_history() -> None:
+    st.title("ประวัติผลลัพธ์ที่บันทึกไว้")
+    st.caption("ผลลัพธ์ที่ผู้ใช้งานกดบันทึกไว้จะแสดงต่อสาธารณะในตารางนี้")
+    records = list_results()
+    if not records:
+        st.info("ยังไม่มีผลลัพธ์ที่บันทึกไว้")
+        return
+
+    display_rows = [
+        {
+            "ชื่อ": record["participant_name"],
+            "วันเวลา": record["created_at"],
+            "MBTI ที่ได้": record["mbti"],
+            "คณะอันดับ 1": record["top_faculty"],
+            "ความเข้ากัน": f"{record['compatibility']}%",
+            "งบที่เลือก": record["budget"] or "ยังไม่ระบุ",
+        }
+        for record in records
+    ]
+    st.dataframe(pd.DataFrame(display_rows), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("ผู้ดูแลระบบ")
+    password = _admin_password()
+    if not password:
+        st.caption("ตั้งค่า UNIMATCH_ADMIN_PASSWORD ใน Streamlit secrets หรือ environment variables เพื่อเปิดสิทธิ์ลบรายการ")
+        return
+
+    entered_password = st.text_input("รหัสผ่านผู้ดูแล", type="password", key="admin_password")
+    if entered_password != password:
+        st.caption("เฉพาะผู้ดูแลที่มีรหัสผ่านจึงจะลบประวัติได้")
+        return
+
+    choices = {f"#{record['id']} — {record['participant_name']} — {record['created_at']}": record["id"] for record in records}
+    selected_label = st.selectbox("เลือกรายการที่ต้องการลบ", list(choices), key="result_to_delete")
+    if st.button("ลบรายการที่เลือก", type="secondary"):
+        if delete_result(choices[selected_label]):
+            st.success("ลบรายการเรียบร้อย")
+            st.rerun()
+
+
+
 ensure_state()
 with st.sidebar:
     st.title("UniMatch")
-    page = st.radio("เมนู", ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "สรุปผล"])
+    page = st.radio("เมนู", ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "สรุปผล", "ประวัติผลลัพธ์"])
     st.caption(
         f"Cognitive: {'✓' if st.session_state.cognitive_done else '○'} | "
         f"ความถนัด: {'✓' if st.session_state.aptitude_done else '○'} | "
@@ -429,5 +513,7 @@ elif page == "1. Cognitive Functions":
     render_cognitive()
 elif page == "2. ความถนัด":
     render_aptitude()
-else:
+elif page == "สรุปผล":
     render_summary()
+else:
+    render_history()
