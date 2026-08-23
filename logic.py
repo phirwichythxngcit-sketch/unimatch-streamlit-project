@@ -64,12 +64,15 @@ def aptitude_summary(responses: Mapping[str, Sequence[int]]) -> dict[str, dict[s
     return result
 
 def _rule_to_dict(rule: tuple) -> dict:
-    faculty, group, mbti_set, conditions = rule
-    return {"faculty": faculty, "group": group, "mbti_set": mbti_set, "conditions": conditions}
+    faculty, group, mbti_set, conditions, cost = rule
+    return {"faculty": faculty, "group": group, "mbti_set": mbti_set, "conditions": conditions, "cost": cost}
 
 
 def match_faculties(mbti: str, aptitude: Mapping[str, Mapping[str, int | str]]) -> list[dict]:
-    """ใช้ ∧ ระหว่าง MBTI กับทุกเกณฑ์หมวดวิชา; เครื่องหมาย > เป็น strict ตามโจทย์."""
+    """ใช้ ∧ ระหว่าง MBTI กับทุกเกณฑ์หมวดวิชา; เครื่องหมาย > เป็น strict ตามโจทย์.
+
+    ผลลัพธ์ยังไม่พิจารณางบประมาณ — ใช้ split_matches_by_budget กรองตามทุนของผู้เรียน.
+    """
     matches = []
     for raw_rule in FACULTY_RULES:
         rule = _rule_to_dict(raw_rule)
@@ -103,11 +106,41 @@ def rank_nearby_faculties(mbti: str, aptitude: Mapping[str, Mapping[str, int | s
     return sorted(ranked, key=lambda item: item["compatibility"], reverse=True)[:limit]
 
 
+BUDGET_TIERS = {
+    "low": ("low",),
+    "medium": ("low", "medium"),
+    "high": ("low", "medium", "high"),
+}
+
+
+def is_affordable(cost_tier: str, budget: str | None) -> bool:
+    """คณะจะถูกแนะนำเมื่อระดับค่าเรียนของคณะอยู่ในงบที่ผู้เรียนเลือก.
+
+    budget=None หมายถึงยังไม่ได้ตอบคำถามทุน จึงยังไม่กรองอะไร.
+    """
+    if budget is None:
+        return True
+    return cost_tier in BUDGET_TIERS[budget]
+
+
+def split_matches_by_budget(
+    matches: Sequence[Mapping],
+    budget: str | None,
+) -> tuple[list[dict], list[dict]]:
+    """แยกคณะที่ผ่านเกณฑ์เป็น (อยู่ในงบ, เกินงบ).
+
+    เช่น แพทยศาสตร์มี cost="high" จึงแนะนำได้เฉพาะเมื่อผู้เรียนเลือกงบ high
+    หากเลือก low/medium คณะนั้นจะตกไปอยู่ลิสต์เกินงบและไม่ถูกแนะนำ.
+    """
+    recommended = [item for item in matches if is_affordable(item["cost"], budget)]
+    over_budget = [item for item in matches if not is_affordable(item["cost"], budget)]
+    return recommended, over_budget
+
+
 def university_options(group: str, budget: str) -> list[dict[str, str]]:
     """งบมากเลือกได้ทุกระดับ งบปานกลางเลือก low/medium และงบน้อยเลือก low."""
-    allowed = {"low": ("low",), "medium": ("low", "medium"), "high": ("low", "medium", "high")}
     options = []
-    for tier in allowed[budget]:
+    for tier in BUDGET_TIERS[budget]:
         for university, estimate in UNIVERSITY_OPTIONS[group][tier]:
             options.append({"tier": tier, "university": university, "estimate": estimate})
     return options

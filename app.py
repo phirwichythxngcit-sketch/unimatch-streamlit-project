@@ -11,6 +11,7 @@ from data import (
     APTITUDE_CATEGORIES,
     BUDGET_LABELS,
     COGNITIVE_FUNCTIONS,
+    COST_TIER_RANGES,
     FUNCTION_ORDER,
     LIKERT_LABELS,
     MBTI_PROFILES,
@@ -23,6 +24,7 @@ from logic import (
     logic_expression,
     match_faculties,
     rank_nearby_faculties,
+    split_matches_by_budget,
     university_options,
 )
 from response_state import answer_key, initialize_answer_store, persist_widget_value, widget_key
@@ -39,7 +41,7 @@ APTITUDE_ANSWER_STORE = "aptitude_answers"
 def ensure_state() -> None:
     st.session_state.setdefault("cognitive_done", False)
     st.session_state.setdefault("aptitude_done", False)
-    st.session_state.setdefault("budget", "medium")
+    st.session_state.setdefault("budget", None)
     initialize_answer_store(
         st.session_state,
         COGNITIVE_ANSWER_STORE,
@@ -98,8 +100,8 @@ def render_intro() -> None:
 
 1. ทำแบบประเมิน Cognitive Functions 80 ข้อ (8 ฟังก์ชัน × 10 ข้อ)
 2. ทำแบบประเมินความสนใจ/ความถนัด 100 ข้อ (5 หมวด × 20 ข้อ)
-3. เลือกระดับทุน/งบประมาณที่มี
-4. เปิดหน้าสรุปเพื่อดู MBTI, ประพจน์ที่เป็นจริง และคณะ/มหาวิทยาลัยตัวอย่าง
+3. เปิดหน้าสรุปเพื่อดู MBTI, ประพจน์ที่เป็นจริง และคณะที่ผ่านเกณฑ์
+4. ตอบคำถามทุน/งบประมาณท้ายหน้าสรุป ระบบจึงเชื่อมคณะแต่ละคณะกับเงินทุน — คณะที่ค่าเรียนเกินงบของคุณจะไม่ถูกแนะนำ
         """
     )
 
@@ -170,19 +172,44 @@ def render_aptitude() -> None:
         )
 
 
-def render_finance() -> None:
-    st.title("ส่วนที่ 3 — ทุนและงบประมาณ")
-    st.write("เลือกช่วงทุนหรือเงินที่มีโดยประมาณ เพื่อกรองตัวอย่างมหาวิทยาลัยให้เหมาะกับงบของคุณ")
-    st.session_state.budget = st.radio(
+def render_match_details(rule: dict, mbti: str, budget: str | None) -> None:
+    """แสดงประพจน์ของกฎหนึ่งคณะ พร้อมการเชื่อมระดับค่าเรียนกับงบของผู้เรียน."""
+    st.code(logic_expression(rule), language="text")
+    details = [
+        {"ประพจน์": f"{item['category']} > {item['minimum']}%", "คะแนนของคุณ": f"{item['actual']}%", "เป็นจริง": "จริง" if item["passed"] else "เท็จ"}
+        for item in rule["condition_results"]
+    ]
+    st.dataframe(pd.DataFrame(details), hide_index=True, use_container_width=True)
+    st.markdown(f"`{mbti} ∈ {{{' ∨ '.join(rule['mbti_set'])}}}` → **จริง**")
+    st.markdown(f"**ระดับค่าเรียนของคณะ:** {BUDGET_LABELS[rule['cost']]} ({COST_TIER_RANGES[rule['cost']]})")
+    if budget is None:
+        if st.session_state.budget is not None:
+            st.warning(f"ค่าเรียนระดับ{BUDGET_LABELS[rule['cost']]}เกินงบที่คุณเลือก ({BUDGET_LABELS[st.session_state.budget]}) จึงไม่ถูกแนะนำ")
+        else:
+            st.caption("ตอบคำถามทุน/งบประมาณท้ายหน้านี้ เพื่อดูตัวอย่างมหาวิทยาลัยภายในงบของคุณ")
+        return
+    st.markdown("**ตัวอย่างมหาวิทยาลัยภายในงบที่เลือก**")
+    for option in university_options(rule["group"], budget):
+        st.write(f"- [{BUDGET_LABELS[option['tier']]}] {option['university']} — {option['estimate']}")
+
+
+def render_budget_question() -> None:
+    """คำถามทุน/งบประมาณวางไว้หลังสรุปคณะ เพื่อใช้กรองผลลัพธ์ที่แสดงด้านบน."""
+    st.divider()
+    st.subheader("ส่วนสุดท้าย — ทุนและงบประมาณของคุณ")
+    st.write("เลือกระดับเงินที่รับได้ต่อเทอม ระบบจะแนะนำเฉพาะคณะที่ค่าเรียนอยู่ในงบของคุณ เช่น คณะแพทยศาสตร์ (ค่าเรียนระดับสูง) จะถูกแนะนำก็ต่อเมื่อเลือก “งบมาก”")
+    choice = st.radio(
         "คุณมีทุนหรือเงินสำหรับค่าใช้จ่ายทางการศึกษาต่อเทอมอยู่ประมาณไหน?",
         options=["low", "medium", "high"],
         format_func=lambda item: {
-            "low": "งบน้อย — ต้องการตัวเลือกค่าใช้จ่ายต่ำ หรือใช้ทุน/กยศ.",
-            "medium": "งบปานกลาง — เลือกได้ทั้งมหาวิทยาลัยรัฐและหลักสูตรทั่วไป",
-            "high": "งบมาก — เปิดกว้างสำหรับหลักสูตรค่าใช้จ่ายสูง",
+            "low": "งบน้อย — รับได้ประมาณ 10,000–18,000 บาท/เทอม",
+            "medium": "งบปานกลาง — รับได้ประมาณ 18,000–30,000 บาท/เทอม",
+            "high": "งบมาก — รับได้ถึงหลักสูตรค่าใช้จ่ายสูง (30,000–60,000+ บาท/เทอม)",
         }[item],
+        index=None if st.session_state.budget is None else ["low", "medium", "high"].index(st.session_state.budget),
     )
-    st.success("ระบบจะใช้คำตอบนี้เพื่อแสดงตัวอย่างมหาวิทยาลัยที่อยู่ในระดับงบของคุณ")
+    if choice is not None:
+        st.session_state.budget = choice
 
 def render_mbti_explanation(result, scores: dict[str, int]) -> None:
     dominant, auxiliary, tertiary, inferior = result.stack
@@ -252,7 +279,7 @@ Auxiliary (Aux), Tertiary (Tert) และ Inferior (Inf) ระบบเลื�
 
 
 def render_summary() -> None:
-    st.title("ส่วนสรุป — ประพจน์ คณะที่ตรงเงื่อนไข และมหาวิทยาลัย")
+    st.title("ส่วนสรุป — ประพจน์ คณะที่ตรงเงื่อนไข และการเชื่อมกับทุน")
     if not (st.session_state.cognitive_done and st.session_state.aptitude_done):
         st.warning("กรุณาทำส่วนที่ 1 และส่วนที่ 2 ให้เสร็จก่อน จึงจะสรุปผลแบบครบถ้วนได้")
         return
@@ -279,25 +306,33 @@ def render_summary() -> None:
     st.dataframe(aptitude_table, use_container_width=True, hide_index=True)
 
     matches = match_faculties(mbti_result.mbti, aptitude)
+    budget = st.session_state.budget
+    budget_answered = budget is not None
+    recommended, over_budget = split_matches_by_budget(matches, budget)
+
     st.subheader("คณะที่ผ่านประพจน์ทั้งหมด")
     if matches:
-        for index, rule in enumerate(matches, start=1):
-            with st.expander(f"{index}. {rule['faculty']}", expanded=index <= 3):
-                st.code(logic_expression(rule), language="text")
-                details = [
-                    {"ประพจน์": f"{item['category']} > {item['minimum']}%", "คะแนนของคุณ": f"{item['actual']}%", "เป็นจริง": "จริง" if item["passed"] else "เท็จ"}
-                    for item in rule["condition_results"]
-                ]
-                st.dataframe(pd.DataFrame(details), hide_index=True, use_container_width=True)
-                st.markdown(f"`{mbti_result.mbti} ∈ {{{' ∨ '.join(rule['mbti_set'])}}}` → **จริง**")
-                st.markdown("**ตัวอย่างมหาวิทยาลัยภายในงบที่เลือก**")
-                for option in university_options(rule["group"], st.session_state.budget):
-                    st.write(f"- [{BUDGET_LABELS[option['tier']]}] {option['university']} — {option['estimate']}")
+        if budget_answered:
+            st.success(f"งบของคุณ: {BUDGET_LABELS[budget]} → ระบบแนะนำ {len(recommended)} คณะ และไม่แนะนำอีก {len(over_budget)} คณะที่ค่าเรียนเกินงบ")
+        else:
+            st.info("ยังไม่ได้ตอบคำถามทุน/งบประมาณ — เลื่อนไปท้ายหน้าเพื่อตอบ ระบบจะเชื่อมคณะแต่ละคณะกับเงินทุนและกรองคณะที่ค่าเรียนเกินงบออก")
+
+        for index, rule in enumerate(recommended, start=1):
+            with st.expander(f"{index}. {rule['faculty']} — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+                render_match_details(rule, mbti_result.mbti, budget)
+        if over_budget:
+            st.subheader("คณะที่ผ่านเกณฑ์ความถนัด แต่ค่าเรียนเกินงบ (ระบบไม่แนะนำ)")
+            st.caption("คณะเหล่านี้ผ่านประพจน์ด้าน MBTI ∧ ความถนัดครบ แต่ระดับค่าเรียนสูงกว่างบที่คุณเลือก จึงถูกตัดออกจากคำแนะนำ")
+            for index, rule in enumerate(over_budget, start=1):
+                with st.expander(f"{index}. {rule['faculty']} — ต้องการ{BUDGET_LABELS[rule['cost']]}"):
+                    render_match_details(rule, mbti_result.mbti, None)
     else:
         st.info("ยังไม่มีคณะที่ผ่านทุกประพจน์แบบ strict (`>`). นี่ไม่ได้แปลว่าเรียนไม่ได้ แต่บอกว่าคะแนนยังไม่ผ่านเกณฑ์ตั้งต้นของกฎนี้ครบทุกข้อ")
         st.subheader("คณะที่ใกล้เคียงที่สุด")
         nearby = rank_nearby_faculties(mbti_result.mbti, aptitude)
         st.dataframe(pd.DataFrame([{"คณะ / สาขา": item["faculty"], "ความเข้ากันโดยประมาณ": f"{item['compatibility']}%"} for item in nearby]), hide_index=True, use_container_width=True)
+
+    render_budget_question()
 
     st.divider()
     report = {
@@ -305,8 +340,12 @@ def render_summary() -> None:
         "cognitive_stack": {"dominant": mbti_result.stack[0], "auxiliary": mbti_result.stack[1], "tertiary": mbti_result.stack[2], "inferior": mbti_result.stack[3]},
         "function_scores": scores,
         "aptitude": aptitude,
-        "budget": st.session_state.budget,
-        "matched_faculties": [item["faculty"] for item in matches],
+        "budget": BUDGET_LABELS[budget] if budget_answered else None,
+        "matched_faculties": [item["faculty"] for item in recommended],
+        "faculties_over_budget": [
+            {"faculty": item["faculty"], "required_cost_tier": item["cost"]}
+            for item in (over_budget if budget_answered else [])
+        ],
     }
     st.download_button("ดาวน์โหลดผลลัพธ์ JSON", data=json.dumps(report, ensure_ascii=False, indent=2), file_name="unimatch-result.json", mime="application/json")
     st.caption("ตัวอย่างค่าเทอมเป็นข้อมูลประมาณการจากชุดข้อมูลเริ่มต้นของโปรเจกต์ ไม่รวมค่าครองชีพและอาจเปลี่ยนแปลงได้")
@@ -315,8 +354,12 @@ def render_summary() -> None:
 ensure_state()
 with st.sidebar:
     st.title("UniMatch")
-    page = st.radio("เมนู", ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "3. ทุนและงบประมาณ", "สรุปผล"])
-    st.caption(f"Cognitive: {'✓' if st.session_state.cognitive_done else '○'} | ความถนัด: {'✓' if st.session_state.aptitude_done else '○'}")
+    page = st.radio("เมนู", ["เริ่มต้น", "1. Cognitive Functions", "2. ความถนัด", "สรุปผล"])
+    st.caption(
+        f"Cognitive: {'✓' if st.session_state.cognitive_done else '○'} | "
+        f"ความถนัด: {'✓' if st.session_state.aptitude_done else '○'} | "
+        f"ทุน: {BUDGET_LABELS[st.session_state.budget] if st.session_state.budget else '○'}"
+    )
 
 if page == "เริ่มต้น":
     render_intro()
@@ -324,7 +367,5 @@ elif page == "1. Cognitive Functions":
     render_cognitive()
 elif page == "2. ความถนัด":
     render_aptitude()
-elif page == "3. ทุนและงบประมาณ":
-    render_finance()
 else:
     render_summary()

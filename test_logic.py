@@ -1,5 +1,12 @@
 from data import APTITUDE_CATEGORIES, FUNCTION_ORDER
-from logic import aptitude_summary, derive_mbti, match_faculties, university_options
+from logic import (
+    aptitude_summary,
+    derive_mbti,
+    is_affordable,
+    match_faculties,
+    split_matches_by_budget,
+    university_options,
+)
 
 
 def test_ne_and_ti_select_entp_stack():
@@ -34,6 +41,45 @@ def test_twenty_aptitude_questions_and_strict_matching():
 
 def test_higher_budget_includes_more_tiers():
     assert len(university_options("STEM", "high")) > len(university_options("STEM", "low"))
+
+
+def max_aptitude() -> dict:
+    responses = {code: [5] * len(category["questions"]) for code, category in APTITUDE_CATEGORIES.items()}
+    return aptitude_summary(responses)
+
+
+def test_high_cost_faculty_requires_high_budget():
+    faculties = {item["faculty"]: item["cost"] for item in match_faculties("ISTJ", max_aptitude())}
+    assert faculties.get("แพทยศาสตร์") == "high"
+
+
+def test_split_matches_by_budget_blocks_insufficient_funds():
+    matches = match_faculties("ISTJ", max_aptitude())
+
+    recommended_medium, over_medium = split_matches_by_budget(matches, "medium")
+    assert "แพทยศาสตร์" not in {item["faculty"] for item in recommended_medium}
+    assert "แพทยศาสตร์" in {item["faculty"] for item in over_medium}
+
+    recommended_high, over_high = split_matches_by_budget(matches, "high")
+    assert "แพทยศาสตร์" in {item["faculty"] for item in recommended_high}
+    assert over_high == []
+
+
+def test_is_affordable_semantics():
+    assert is_affordable("high", "high")
+    assert not is_affordable("high", "medium")
+    assert not is_affordable("high", "low")
+    assert is_affordable("medium", "medium")
+    assert not is_affordable("medium", "low")
+    assert is_affordable("low", "low")
+    assert is_affordable("low", "high")
+
+
+def test_no_budget_filter_returns_all_matches_as_recommended():
+    matches = match_faculties("ISTP", max_aptitude())
+    recommended, over = split_matches_by_budget(matches, None)
+    assert len(recommended) == len(matches)
+    assert over == []
 
 
 def test_tertiary_score_breaks_an_auxiliary_tie():
