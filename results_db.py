@@ -26,10 +26,16 @@ def initialize_database(database_path: Path | str = DATABASE_PATH) -> None:
                 mbti TEXT NOT NULL,
                 top_faculty TEXT NOT NULL,
                 compatibility INTEGER NOT NULL CHECK (compatibility BETWEEN 0 AND 100),
-                budget TEXT
+                budget TEXT,
+                selection_basis TEXT NOT NULL DEFAULT 'จัดอันดับจากคะแนนความเข้ากัน'
             )
             """
         )
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(results)")}
+        if "selection_basis" not in columns:
+            connection.execute(
+                "ALTER TABLE results ADD COLUMN selection_basis TEXT NOT NULL DEFAULT 'จัดอันดับจากคะแนนความเข้ากัน'"
+            )
 
 
 def save_result(
@@ -38,6 +44,7 @@ def save_result(
     top_faculty: str,
     compatibility: int,
     budget: str | None,
+    selection_basis: str,
     database_path: Path | str = DATABASE_PATH,
 ) -> int:
     """Save one completed assessment and return its database id."""
@@ -46,15 +53,17 @@ def save_result(
         raise ValueError("กรุณาระบุชื่อก่อนบันทึกผล")
     if not 0 <= compatibility <= 100:
         raise ValueError("คะแนนความเข้ากันต้องอยู่ระหว่าง 0 ถึง 100")
+    if not selection_basis.strip():
+        raise ValueError("ต้องระบุเกณฑ์คัดเลือก")
 
     initialize_database(database_path)
     with _connect(database_path) as connection:
         cursor = connection.execute(
             """
-            INSERT INTO results (participant_name, mbti, top_faculty, compatibility, budget)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO results (participant_name, mbti, top_faculty, compatibility, budget, selection_basis)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (name, mbti, top_faculty, compatibility, budget),
+            (name, mbti, top_faculty, compatibility, budget, selection_basis.strip()),
         )
         return int(cursor.lastrowid)
 
@@ -65,7 +74,7 @@ def list_results(database_path: Path | str = DATABASE_PATH) -> list[dict[str, An
     with _connect(database_path) as connection:
         rows = connection.execute(
             """
-            SELECT id, participant_name, created_at, mbti, top_faculty, compatibility, budget
+            SELECT id, participant_name, created_at, mbti, top_faculty, compatibility, budget, selection_basis
             FROM results
             ORDER BY id DESC
             """
