@@ -38,13 +38,18 @@ APTITUDE_MAX_SCORE = APTITUDE_QUESTION_COUNT * max(LIKERT_LABELS)
 APTITUDE_TOTAL_QUESTIONS = sum(len(item["questions"]) for item in APTITUDE_CATEGORIES.values())
 COGNITIVE_ANSWER_STORE = "cognitive_answers"
 APTITUDE_ANSWER_STORE = "aptitude_answers"
+PARTICIPANT_NAME_STORE = "participant_name_saved"
+PARTICIPANT_NAME_WIDGET = "participant_name"
 
 
 def ensure_state() -> None:
     st.session_state.setdefault("cognitive_done", False)
     st.session_state.setdefault("aptitude_done", False)
     st.session_state.setdefault("budget", None)
-    st.session_state.setdefault("participant_name", "")
+    st.session_state.setdefault(
+        PARTICIPANT_NAME_STORE,
+        st.session_state.get(PARTICIPANT_NAME_WIDGET, ""),
+    )
     initialize_answer_store(
         st.session_state,
         COGNITIVE_ANSWER_STORE,
@@ -90,6 +95,11 @@ def persist_answer(store_name: str, saved_key: str, input_key: str) -> None:
     persist_widget_value(st.session_state, store_name, saved_key, input_key)
 
 
+def persist_participant_name() -> None:
+    """Keep the name after Streamlit removes the intro-page widget on navigation."""
+    st.session_state[PARTICIPANT_NAME_STORE] = st.session_state.get(PARTICIPANT_NAME_WIDGET, "").strip()
+
+
 def render_intro() -> None:
     st.title("การพัฒนาเว็บแอปพลิเคชันวางแผนการศึกษาต่อด้วยกฎตรรกศาสตร์ ร่วมกับการวิเคราะห์บุคลิกภาพ MBTI และข้อจำกัดด้านทุนทรัพย์ทางการศึกษา สำหรับนักเรียนโรงเรียนสองพิทยาคม")
     st.subheader("ใช้ Cognitive Functions + ความสนใจ/ความถนัด + งบประมาณ เพื่อหาเส้นทางที่น่าไปต่อ")
@@ -98,12 +108,15 @@ def render_intro() -> None:
         "ควรตรวจสอบคุณสมบัติ TCAS ค่าเทอม และหลักสูตรจากมหาวิทยาลัยโดยตรงก่อนตัดสินใจ"
     )
     st.subheader("ข้อมูลผู้ทำแบบประเมิน")
+    if PARTICIPANT_NAME_WIDGET not in st.session_state:
+        st.session_state[PARTICIPANT_NAME_WIDGET] = st.session_state[PARTICIPANT_NAME_STORE]
     st.text_input(
         "ชื่อที่ต้องการแสดงในประวัติผลลัพธ์",
-        key="participant_name",
+        key=PARTICIPANT_NAME_WIDGET,
         max_chars=100,
         placeholder="เช่น สมชาย ใจดี",
         help="ทุกคนจะเห็นชื่อนี้ในหน้าประวัติผลลัพธ์หลังคุณกดบันทึก",
+        on_change=persist_participant_name,
     )
     st.caption("กรอกชื่อก่อนเริ่มทำแบบประเมิน เพื่อให้สามารถบันทึกผลเมื่อทำเสร็จได้")
 
@@ -418,7 +431,7 @@ def render_summary() -> None:
         if st.button("บันทึกผลของฉัน", type="primary"):
             try:
                 result_id = save_result(
-                    participant_name=st.session_state.participant_name,
+                    participant_name=st.session_state[PARTICIPANT_NAME_STORE],
                     mbti=mbti_result.mbti,
                     top_faculty=top_option["faculty"],
                     compatibility=top_option["compatibility"],
