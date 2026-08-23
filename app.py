@@ -354,11 +354,28 @@ def render_summary() -> None:
                 with st.expander(f"{index}. {rule['faculty']} — ต้องการ{BUDGET_LABELS[rule['cost']]}"):
                     render_match_details(rule, mbti_result.mbti, None)
     else:
-        st.info("ยังไม่มีคณะที่ผ่านทุกประพจน์แบบ strict (`>`). นี่ไม่ได้แปลว่าเรียนไม่ได้ แต่บอกว่าคะแนนยังไม่ผ่านเกณฑ์ตั้งต้นของกฎนี้ครบทุกข้อ")
-        st.subheader("คณะที่ใกล้เคียงที่สุด")
-        nearby = rank_nearby_faculties(mbti_result.mbti, aptitude)
-        st.dataframe(pd.DataFrame([{"คณะ / สาขา": item["faculty"], "ความเข้ากันโดยประมาณ": f"{item['compatibility']}%"} for item in nearby]), hide_index=True, use_container_width=True)
-
+        st.info("ยังไม่มีคณะที่ผ่านทุกประพจน์แบบ strict (>) ระบบจึงเริ่มตรรกะสำรองโดยผ่อนเกณฑ์วิชาลง 10 จุดเปอร์เซ็นต์ในงบเดิม")
+        relaxed_matches = match_faculties(mbti_result.mbti, aptitude, subject_relaxation=10)
+        relaxed_recommended, relaxed_over_budget = split_matches_by_budget(relaxed_matches, budget)
+        if relaxed_recommended:
+            st.success(f"พบ {len(relaxed_recommended)} คณะจากการผ่อนเกณฑ์วิชา 10% — เป็นผลลัพธ์ใกล้เคียง ไม่ใช่ผล strict")
+            for index, rule in enumerate(relaxed_recommended, start=1):
+                with st.expander(f"{index}. {rule['faculty']} — {BUDGET_LABELS[rule['cost']]} (ผ่อนเกณฑ์ 10%)", expanded=index <= 3):
+                    render_match_details(rule, mbti_result.mbti, budget)
+        elif relaxed_over_budget:
+            render_financial_aid_suggestion(len(relaxed_over_budget))
+        else:
+            st.subheader("คณะที่ใกล้เคียงที่สุดภายในงบ")
+            nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
+            st.dataframe(
+                pd.DataFrame([
+                    {"คณะ / สาขา": item["faculty"], "ระดับค่าเรียน": BUDGET_LABELS[item["cost"]], "ความเข้ากันโดยประมาณ": f"{item['compatibility']}%"}
+                    for item in nearby
+                ]),
+                hide_index=True,
+                use_container_width=True,
+            )
+            st.caption("รายการนี้เป็นทางเลือกสำรองเมื่อแม้ลดเกณฑ์วิชาแล้วก็ยังไม่ผ่าน จึงไม่ใช่ผลที่ผ่านประพจน์ strict")
     render_budget_question()
 
     st.divider()
