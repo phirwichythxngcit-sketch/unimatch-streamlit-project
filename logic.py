@@ -58,6 +58,58 @@ def _rule_to_dict(rule: tuple) -> dict:
     return {"faculty": faculty, "group": group, "mbti_set": mbti_set, "conditions": conditions, "cost": cost}
 
 
+def mbti_compatibility(mbti: str, target_mbti: Sequence[str]) -> int:
+    """ให้คะแนนความใกล้เคียงของ Cognitive Function stacks; MBTI ที่อยู่ในกฎได้ 100%."""
+    if mbti in target_mbti:
+        return 100
+
+    user_stack = MBTI_STACKS[mbti]
+    position_weights = (0.40, 0.30, 0.20, 0.10)
+    best_score = 0.0
+    for candidate in target_mbti:
+        candidate_stack = MBTI_STACKS[candidate]
+        same_position = sum(
+            weight for index, weight in enumerate(position_weights)
+            if user_stack[index] == candidate_stack[index]
+        )
+        shared_functions = len(set(user_stack) & set(candidate_stack)) / 4
+        best_score = max(best_score, (70 * same_position) + (30 * shared_functions))
+    return min(95, round(best_score))
+
+
+def _evaluate_rule(
+    rule: Mapping,
+    mbti: str,
+    aptitude: Mapping[str, Mapping[str, int | str]],
+    subject_relaxation: int = 0,
+) -> dict:
+    conditions = [
+        {
+            "category": category,
+            "actual": int(aptitude[category]["percent"]),
+            "minimum": minimum,
+            "effective_minimum": max(0, minimum - subject_relaxation),
+            "passed": int(aptitude[category]["percent"]) > max(0, minimum - subject_relaxation),
+        }
+        for category, minimum in rule["conditions"]
+    ]
+    subject_compatibility = round(
+        100 * sum(min(1.0, item["actual"] / item["minimum"]) for item in conditions) / len(conditions)
+    )
+    mbti_score = mbti_compatibility(mbti, rule["mbti_set"])
+    compatibility = round((0.45 * mbti_score) + (0.55 * subject_compatibility))
+    mbti_pass = mbti in rule["mbti_set"]
+    return {
+        **rule,
+        "mbti_pass": mbti_pass,
+        "mbti_compatibility": mbti_score,
+        "subject_compatibility": subject_compatibility,
+        "compatibility": compatibility,
+        "condition_results": conditions,
+        "passed": mbti_pass and all(item["passed"] for item in conditions),
+    }
+
+
 def match_faculties(
     mbti: str,
     aptitude: Mapping[str, Mapping[str, int | str]],
@@ -66,24 +118,11 @@ def match_faculties(
     """ใช้ MBTI ∧ ทุกเกณฑ์วิชา โดยลดเกณฑ์ได้ 0–10 จุดเปอร์เซ็นต์สำหรับ fallback."""
     if not 0 <= subject_relaxation <= 10:
         raise ValueError("subject_relaxation ต้องอยู่ระหว่าง 0 ถึง 10")
-
-    matches = []
-    for raw_rule in FACULTY_RULES:
-        rule = _rule_to_dict(raw_rule)
-        mbti_pass = mbti in rule["mbti_set"]
-        conditions = [
-            {
-                "category": category,
-                "actual": int(aptitude[category]["percent"]),
-                "minimum": minimum,
-                "effective_minimum": max(0, minimum - subject_relaxation),
-                "passed": int(aptitude[category]["percent"]) > max(0, minimum - subject_relaxation),
-            }
-            for category, minimum in rule["conditions"]
-        ]
-        if mbti_pass and all(condition["passed"] for condition in conditions):
-            matches.append({**rule, "mbti_pass": True, "condition_results": conditions, "passed": True})
-    return matches
+    return [
+        evaluated
+        for raw_rule in FACULTY_RULES
+        if (evaluated := _evaluate_rule(_rule_to_dict(raw_rule), mbti, aptitude, subject_relaxation))["passed"]
+    ]
 
 
 def rank_nearby_faculties(
@@ -92,18 +131,12 @@ def rank_nearby_faculties(
     limit: int = 5,
     budget: str | None = None,
 ) -> list[dict]:
-    """เสนอทางเลือกใกล้เคียงในงบ เมื่อ strict และการผ่อนเกณฑ์ยังไม่พบผล."""
-    ranked = []
-    for raw_rule in FACULTY_RULES:
-        rule = _rule_to_dict(raw_rule)
-        if not is_affordable(rule["cost"], budget):
-            continue
-        subject_ratio = sum(
-            min(1.0, int(aptitude[category]["percent"]) / minimum)
-            for category, minimum in rule["conditions"]
-        ) / len(rule["conditions"])
-        score = round((30 if mbti in rule["mbti_set"] else 0) + (70 * subject_ratio))
-        ranked.append({**rule, "compatibility": min(100, score)})
+    """เสนอทางเลือกในงบ เรียงด้วย MBTI 45% + ความถนัด 55% เมื่อไม่มีผล strict."""
+    ranked = [
+        _evaluate_rule(_rule_to_dict(raw_rule), mbti, aptitude)
+        for raw_rule in FACULTY_RULES
+        if is_affordable(raw_rule[4], budget)
+    ]
     return sorted(ranked, key=lambda item: (item["compatibility"], item["faculty"]), reverse=True)[:limit]
 
 
