@@ -342,6 +342,32 @@ Auxiliary (Aux), Tertiary (Tert) และ Inferior (Inf) ระบบเลื�
             )
 
 
+def render_compatibility_explanation() -> None:
+    st.subheader("หลักการคำนวณความเข้ากันได้")
+    st.markdown(
+        """
+**ตรรกศาสตร์เป็นเกณฑ์หลัก:** คณะจะเป็นผลลัพธ์แบบ **ผ่าน strict** ก็ต่อเมื่อ
+
+MBTI ของผู้ใช้ ∈ ชุด MBTI ของคณะ  ∧  คะแนนวิชาทุกหมวด > เกณฑ์ของคณะ
+
+คะแนนเปอร์เซ็นต์ใช้เพื่อเรียงลำดับคณะที่ผ่าน และใช้เป็นทางเลือกสำรองเฉพาะเมื่อผล strict
+ไม่มีคณะในงบประมาณที่ผู้ใช้ยืนยัน ไม่ได้ใช้แทนคำว่า “ผ่าน” โดยไม่มีป้ายกำกับ
+        """
+    )
+    st.markdown(
+        """
+- **ความสอดคล้อง MBTI (45%)** — ถ้า MBTI อยู่ในชุดเงื่อนไขของคณะ จะได้ 100%  
+  หากไม่อยู่ในชุด ระบบเปรียบเทียบ Cognitive Function Stack (Dom, Aux, Tert, Inf)
+  กับ MBTI ที่คณะรองรับ: ตำแหน่งที่ตรงกันมีน้ำหนัก 40%, 30%, 20%, 10% และฟังก์ชันที่ร่วมกัน
+  มีน้ำหนักเพิ่มอีก 30%; ผลทางเลือกสำรองถูกจำกัดไม่เกิน 95%
+- **ความสอดคล้องคะแนนวิชา (55%)** — คำนวณคะแนนของผู้ใช้เทียบเกณฑ์ในทุกหมวดที่คณะกำหนด
+  แล้วเฉลี่ย โดยแต่ละหมวดคิดได้สูงสุด 100%
+- **ความเข้ากันรวม** — (MBTI × 45%) + (คะแนนวิชา × 55%)
+        """
+    )
+    st.caption("เปิดแต่ละคณะเพื่อดูประพจน์, คะแนนจริง, เกณฑ์ และค่าทั้งสามส่วนได้ครบถ้วน")
+
+
 def render_summary() -> None:
     st.title("ส่วนสรุป — ประพจน์ คณะที่ตรงเงื่อนไข และการเชื่อมกับทุน")
     if not (st.session_state.cognitive_done and st.session_state.aptitude_done):
@@ -369,10 +395,16 @@ def render_summary() -> None:
     )
     st.dataframe(aptitude_table, use_container_width=True, hide_index=True)
 
+    render_compatibility_explanation()
+
     matches = match_faculties(mbti_result.mbti, aptitude)
     budget = st.session_state.budget
     budget_answered = budget is not None
     recommended, over_budget = split_matches_by_budget(matches, budget)
+    recommended = sorted(recommended, key=lambda item: item["compatibility"], reverse=True)
+    over_budget = sorted(over_budget, key=lambda item: item["compatibility"], reverse=True)
+    history_candidates = recommended
+    history_selection_basis = "ผ่านตรรกะ strict: MBTI อยู่ในชุดคณะ และคะแนนวิชาทุกหมวดมากกว่าเกณฑ์"
 
     st.subheader("คณะที่ผ่านประพจน์ทั้งหมด")
     if matches:
@@ -396,6 +428,8 @@ def render_summary() -> None:
             st.subheader("ทางเลือกที่อยู่ในงบของคุณ")
             st.info("แม้ผล strict ที่ตรงที่สุดจะเกินงบ ระบบจึงลดลำดับเกณฑ์วิชาและ MBTI เป็นคะแนนความเข้ากัน เพื่อค้นหาคณะในงบที่เลือก โดยไม่บังคับให้กู้ยืม")
             nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
+            history_candidates = nearby
+            history_selection_basis = "ทางเลือกในงบ: จัดอันดับจาก MBTI 45% + คะแนนวิชา 55% หลังผล strict เกินงบ"
             for index, rule in enumerate(nearby, start=1):
                 with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
@@ -406,6 +440,9 @@ def render_summary() -> None:
         relaxed_matches = match_faculties(mbti_result.mbti, aptitude, subject_relaxation=10)
         relaxed_recommended, relaxed_over_budget = split_matches_by_budget(relaxed_matches, budget)
         if relaxed_recommended:
+            relaxed_recommended = sorted(relaxed_recommended, key=lambda item: item["compatibility"], reverse=True)
+            history_candidates = relaxed_recommended
+            history_selection_basis = "ผ่อนเกณฑ์วิชา 10%: MBTI อยู่ในชุดคณะ และคะแนนวิชามากกว่าเกณฑ์ที่ลดลง"
             st.success(f"พบ {len(relaxed_recommended)} คณะจากการผ่อนเกณฑ์วิชา 10% — เป็นผลลัพธ์ใกล้เคียง ไม่ใช่ผล strict")
             for index, rule in enumerate(relaxed_recommended, start=1):
                 with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]} (ผ่อนเกณฑ์ 10%)", expanded=index <= 3):
@@ -413,6 +450,8 @@ def render_summary() -> None:
         else:
             st.subheader("คณะที่ใกล้เคียงที่สุดภายในงบ")
             nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
+            history_candidates = nearby
+            history_selection_basis = "ทางเลือกในงบ: จัดอันดับจาก MBTI 45% + คะแนนวิชา 55% เพราะไม่พบผล strict"
             for index, rule in enumerate(nearby, start=1):
                 with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
@@ -424,8 +463,7 @@ def render_summary() -> None:
 
     st.divider()
     st.subheader("บันทึกผลเข้าในระบบ")
-    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, limit=1, budget=budget)
-    top_option = save_options[0] if save_options else None
+    top_option = history_candidates[0] if history_candidates else None
     if top_option:
         st.write(f"รายการที่จะบันทึก: **{top_option['faculty']}** — ความเข้ากัน {top_option['compatibility']}%")
         if st.button("บันทึกผลของฉัน", type="primary"):
@@ -436,6 +474,7 @@ def render_summary() -> None:
                     top_faculty=top_option["faculty"],
                     compatibility=top_option["compatibility"],
                     budget=BUDGET_LABELS[budget] if budget else None,
+                    selection_basis=history_selection_basis,
                 )
                 st.success(f"บันทึกผลสำเร็จ (รายการ #{result_id}) ดูได้จากเมนู “ประวัติผลลัพธ์”")
             except ValueError as error:
@@ -484,6 +523,7 @@ def render_history() -> None:
             "คณะอันดับ 1": record["top_faculty"],
             "ความเข้ากัน": f"{record['compatibility']}%",
             "งบที่เลือก": record["budget"] or "ยังไม่ระบุ",
+            "เกณฑ์คัดเลือก": record["selection_basis"],
         }
         for record in records
     ]
