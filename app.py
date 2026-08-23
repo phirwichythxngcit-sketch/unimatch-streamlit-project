@@ -27,7 +27,7 @@ from logic import (
 )
 from response_state import answer_key, initialize_answer_store, persist_widget_value, widget_key
 
-st.set_page_config(page_title="UniMatch — เลือกคณะด้วยตรรกศาสตร์", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="การพัฒนาเว็บแอปพลิเคชันวางแผนการศึกษาต่อด้วยกฎตรรกศาสตร์ ร่วมกับการวิเคราะห์บุคลิกภาพ MBTI และข้อจำกัดด้านทุนทรัพย์ทางการศึกษา สำหรับนักเรียนโรงเรียนสองพิทยาคม", page_icon="🎓", layout="wide")
 
 APTITUDE_QUESTION_COUNT = len(next(iter(APTITUDE_CATEGORIES.values()))["questions"])
 APTITUDE_MAX_SCORE = APTITUDE_QUESTION_COUNT * max(LIKERT_LABELS)
