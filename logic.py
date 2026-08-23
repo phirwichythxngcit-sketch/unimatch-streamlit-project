@@ -22,33 +22,22 @@ def function_totals(responses: Mapping[str, Sequence[int]]) -> dict[str, int]:
 
 
 def derive_mbti(scores: Mapping[str, int]) -> MbtiResult:
-    """หา MBTI ตามลำดับ Dominant → Auxiliary → Tertiary → Inferior.
-
-    เมื่อคะแนนตำแหน่งหนึ่งเสมอกัน ระบบจึงเปรียบเทียบตำแหน่งถัดไปตามลำดับนี้
-    เพื่อให้ผลลัพธ์มีเงื่อนไขชัดเจนและทำซ้ำได้.
-    """
+    """หา MBTI แบบกำหนดผลได้แน่นอนด้วย Dom → Aux → Tert → Inf."""
     if set(scores) != set(FUNCTION_ORDER):
         raise ValueError("scores ต้องมีครบ 8 ฟังก์ชัน: Ne, Ni, Se, Si, Te, Ti, Fe, Fi")
+
     highest = max(scores.values())
     dominant_ties = tuple(function for function in FUNCTION_ORDER if scores[function] == highest)
-    candidates = [
-        (mbti, stack)
-        for mbti, stack in MBTI_STACKS.items()
-        if stack[0] in dominant_ties
-    ]
-    # เปรียบเทียบตามลำดับ Dom → Aux → Tert → Inf โดยตรง
-    # จึงอธิบายเงื่อนไขของแต่ละตำแหน่งให้ผู้ใช้ตรวจตามได้
+    candidates = [(mbti, stack) for mbti, stack in MBTI_STACKS.items() if stack[0] in dominant_ties]
+
     def stack_affinity(item: tuple[str, tuple[str, str, str, str]]) -> tuple[int, int, int, int, str]:
         mbti, stack = item
         return (*[scores[function] for function in stack], mbti)
 
     mbti, stack = max(candidates, key=stack_affinity)
-    return MbtiResult(
-        mbti=mbti,
-        stack=stack,
-        dominant_ties=dominant_ties,
-        used_tiebreak=len(dominant_ties) > 1 or scores[stack[1]] == scores[[s for _, s in candidates if s[0] == stack[0] and s != stack][0][1]],
-    )
+    # มีการใช้ตัวตัดสินเมื่อฟังก์ชัน Dominant เสมอกัน หรือมีมากกว่าหนึ่ง stack ที่เริ่มต้นเหมือนกัน
+    used_tiebreak = len(dominant_ties) > 1 or sum(1 for _, item_stack in candidates if item_stack[0] == stack[0]) > 1
+    return MbtiResult(mbti=mbti, stack=stack, dominant_ties=dominant_ties, used_tiebreak=used_tiebreak)
 
 
 def aptitude_summary(responses: Mapping[str, Sequence[int]]) -> dict[str, dict[str, int | str]]:
@@ -63,16 +52,21 @@ def aptitude_summary(responses: Mapping[str, Sequence[int]]) -> dict[str, dict[s
         result[code] = {"name": category["name"], "total": total, "percent": percent, "zone": zone}
     return result
 
+
 def _rule_to_dict(rule: tuple) -> dict:
     faculty, group, mbti_set, conditions, cost = rule
     return {"faculty": faculty, "group": group, "mbti_set": mbti_set, "conditions": conditions, "cost": cost}
 
 
-def match_faculties(mbti: str, aptitude: Mapping[str, Mapping[str, int | str]]) -> list[dict]:
-    """ใช้ ∧ ระหว่าง MBTI กับทุกเกณฑ์หมวดวิชา; เครื่องหมาย > เป็น strict ตามโจทย์.
+def match_faculties(
+    mbti: str,
+    aptitude: Mapping[str, Mapping[str, int | str]],
+    subject_relaxation: int = 0,
+) -> list[dict]:
+    """ใช้ MBTI ∧ ทุกเกณฑ์วิชา โดยลดเกณฑ์ได้ 0–10 จุดเปอร์เซ็นต์สำหรับ fallback."""
+    if not 0 <= subject_relaxation <= 10:
+        raise ValueError("subject_relaxation ต้องอยู่ระหว่าง 0 ถึง 10")
 
-    ผลลัพธ์ยังไม่พิจารณางบประมาณ — ใช้ split_matches_by_budget กรองตามทุนของผู้เรียน.
-    """
     matches = []
     for raw_rule in FACULTY_RULES:
         rule = _rule_to_dict(raw_rule)
@@ -82,63 +76,53 @@ def match_faculties(mbti: str, aptitude: Mapping[str, Mapping[str, int | str]]) 
                 "category": category,
                 "actual": int(aptitude[category]["percent"]),
                 "minimum": minimum,
-                "passed": int(aptitude[category]["percent"]) > minimum,
+                "effective_minimum": max(0, minimum - subject_relaxation),
+                "passed": int(aptitude[category]["percent"]) > max(0, minimum - subject_relaxation),
             }
             for category, minimum in rule["conditions"]
         ]
-        passed = mbti_pass and all(condition["passed"] for condition in conditions)
-        if passed:
-            matches.append({**rule, "mbti_pass": mbti_pass, "condition_results": conditions, "passed": True})
+        if mbti_pass and all(condition["passed"] for condition in conditions):
+            matches.append({**rule, "mbti_pass": True, "condition_results": conditions, "passed": True})
     return matches
 
 
-def rank_nearby_faculties(mbti: str, aptitude: Mapping[str, Mapping[str, int | str]], limit: int = 5) -> list[dict]:
-    """เสนอทางเลือกใกล้เคียงเมื่อไม่มีคณะใดผ่านครบทุกประพจน์."""
+def rank_nearby_faculties(
+    mbti: str,
+    aptitude: Mapping[str, Mapping[str, int | str]],
+    limit: int = 5,
+    budget: str | None = None,
+) -> list[dict]:
+    """เสนอทางเลือกใกล้เคียงในงบ เมื่อ strict และการผ่อนเกณฑ์ยังไม่พบผล."""
     ranked = []
     for raw_rule in FACULTY_RULES:
         rule = _rule_to_dict(raw_rule)
+        if not is_affordable(rule["cost"], budget):
+            continue
         subject_ratio = sum(
             min(1.0, int(aptitude[category]["percent"]) / minimum)
             for category, minimum in rule["conditions"]
         ) / len(rule["conditions"])
         score = round((30 if mbti in rule["mbti_set"] else 0) + (70 * subject_ratio))
         ranked.append({**rule, "compatibility": min(100, score)})
-    return sorted(ranked, key=lambda item: item["compatibility"], reverse=True)[:limit]
+    return sorted(ranked, key=lambda item: (item["compatibility"], item["faculty"]), reverse=True)[:limit]
 
 
-BUDGET_TIERS = {
-    "low": ("low",),
-    "medium": ("low", "medium"),
-    "high": ("low", "medium", "high"),
-}
+BUDGET_TIERS = {"low": ("low",), "medium": ("low", "medium"), "high": ("low", "medium", "high")}
 
 
 def is_affordable(cost_tier: str, budget: str | None) -> bool:
-    """คณะจะถูกแนะนำเมื่อระดับค่าเรียนของคณะอยู่ในงบที่ผู้เรียนเลือก.
-
-    budget=None หมายถึงยังไม่ได้ตอบคำถามทุน จึงยังไม่กรองอะไร.
-    """
     if budget is None:
         return True
     return cost_tier in BUDGET_TIERS[budget]
 
 
-def split_matches_by_budget(
-    matches: Sequence[Mapping],
-    budget: str | None,
-) -> tuple[list[dict], list[dict]]:
-    """แยกคณะที่ผ่านเกณฑ์เป็น (อยู่ในงบ, เกินงบ).
-
-    เช่น แพทยศาสตร์มี cost="high" จึงแนะนำได้เฉพาะเมื่อผู้เรียนเลือกงบ high
-    หากเลือก low/medium คณะนั้นจะตกไปอยู่ลิสต์เกินงบและไม่ถูกแนะนำ.
-    """
-    recommended = [item for item in matches if is_affordable(item["cost"], budget)]
-    over_budget = [item for item in matches if not is_affordable(item["cost"], budget)]
+def split_matches_by_budget(matches: Sequence[Mapping], budget: str | None) -> tuple[list[dict], list[dict]]:
+    recommended = [dict(item) for item in matches if is_affordable(item["cost"], budget)]
+    over_budget = [dict(item) for item in matches if not is_affordable(item["cost"], budget)]
     return recommended, over_budget
 
 
 def university_options(group: str, budget: str) -> list[dict[str, str]]:
-    """งบมากเลือกได้ทุกระดับ งบปานกลางเลือก low/medium และงบน้อยเลือก low."""
     options = []
     for tier in BUDGET_TIERS[budget]:
         for university, estimate in UNIVERSITY_OPTIONS[group][tier]:
@@ -150,3 +134,32 @@ def logic_expression(rule: Mapping) -> str:
     mbti_term = " ∨ ".join(rule["mbti_set"])
     subject_term = " ∧ ".join(f"{category} > {minimum}%" for category, minimum in rule["conditions"])
     return f"({mbti_term}) ∧ ({subject_term})"
+
+
+def verify_rule_set() -> dict[str, object]:
+    """ตรวจ satisfiability และความครอบคลุมของกฎจากข้อมูลจริงของระบบ."""
+    all_types = set(MBTI_STACKS)
+    covered_types: set[str] = set()
+    satisfiable_rules: list[str] = []
+
+    for raw_rule in FACULTY_RULES:
+        rule = _rule_to_dict(raw_rule)
+        if not rule["mbti_set"] or not rule["conditions"]:
+            raise ValueError(f"กฎ {rule['faculty']} ต้องมี MBTI และเงื่อนไขวิชา")
+        if rule["cost"] not in BUDGET_TIERS:
+            raise ValueError(f"ระดับงบของ {rule['faculty']} ไม่ถูกต้อง")
+        for mbti in rule["mbti_set"]:
+            if mbti not in all_types:
+                raise ValueError(f"MBTI {mbti} ไม่อยู่ในระบบ")
+        for category, minimum in rule["conditions"]:
+            if category not in APTITUDE_CATEGORIES or not 0 <= minimum < 100:
+                raise ValueError(f"เกณฑ์ของ {rule['faculty']} ไม่สามารถทำให้จริงได้")
+        covered_types.update(rule["mbti_set"])
+        satisfiable_rules.append(rule["faculty"])
+
+    return {
+        "all_rules_satisfiable": len(satisfiable_rules) == len(FACULTY_RULES),
+        "satisfiable_rules": satisfiable_rules,
+        "uncovered_mbti": sorted(all_types - covered_types),
+        "mbti_exhaustive": covered_types == all_types,
+    }
