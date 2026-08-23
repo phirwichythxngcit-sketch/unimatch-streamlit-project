@@ -1,7 +1,7 @@
 from data import APTITUDE_CATEGORIES, FUNCTION_ORDER, MBTI_STACKS
 from logic import (
     aptitude_summary, derive_mbti, is_affordable, match_faculties, rank_nearby_faculties,
-    split_matches_by_budget, university_options, verify_rule_set,
+    split_matches_by_budget, university_options, verify_rule_set, mbti_compatibility,
 )
 
 
@@ -69,3 +69,28 @@ def test_subject_relaxation_is_limited_and_respects_budget():
     assert match_faculties("INTP", aptitude, subject_relaxation=10)
     nearby = rank_nearby_faculties("INTP", aptitude_at(1), budget="low")
     assert nearby and all(item["cost"] == "low" for item in nearby)
+
+
+def test_compatibility_uses_mbti_and_subject_components():
+    aptitude = aptitude_at(5)
+    matched = match_faculties("ISTJ", aptitude)
+    medicine = next(item for item in matched if item["faculty"] == "แพทยศาสตร์")
+    assert medicine["mbti_compatibility"] == 100
+    assert medicine["subject_compatibility"] == 100
+    assert medicine["compatibility"] == 100
+
+
+def test_low_budget_gets_ranked_in_budget_alternatives_when_strict_matches_cost_more():
+    aptitude = aptitude_at(5)
+    strict = match_faculties("ISFP", aptitude)
+    affordable, over_budget = split_matches_by_budget(strict, "low")
+    assert not affordable and over_budget
+    alternatives = rank_nearby_faculties("ISFP", aptitude, budget="low")
+    assert alternatives
+    assert all(item["cost"] == "low" for item in alternatives)
+    assert all("condition_results" in item and "compatibility" in item for item in alternatives)
+
+
+def test_mbti_compatibility_is_full_for_a_type_in_the_rule_and_bounded_otherwise():
+    assert mbti_compatibility("INTP", ["INTP", "ENTP"]) == 100
+    assert 0 <= mbti_compatibility("INTP", ["ESFJ"]) <= 95
