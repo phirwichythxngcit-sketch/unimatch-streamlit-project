@@ -89,6 +89,13 @@ def test_ranked_alternatives_expose_truth_values_without_mbti_similarity_score()
 
 
 def test_logical_rank_key_prioritizes_mbti_then_subject_truth():
-    exact_mbti = {"mbti_pass": True, "passed_conditions": 0, "total_conditions": 1, "minimum_margin": -50, "subject_average": 10}
-    subject_pass_only = {"mbti_pass": False, "passed_conditions": 1, "total_conditions": 1, "minimum_margin": 50, "subject_average": 100}
+    exact_mbti = {"mbti_pass": True, "passed_conditions": 0, "total_conditions": 1, "minimum_margin": -50, "average_margin": -50, "subject_average": 10}
+    subject_pass_only = {"mbti_pass": False, "passed_conditions": 1, "total_conditions": 1, "minimum_margin": 50, "average_margin": 50, "subject_average": 100}
     assert logical_rank_key(exact_mbti) > logical_rank_key(subject_pass_only)
+
+
+def test_margin_distinguishes_faculties_when_raw_answers_are_the_same():
+    aptitude = aptitude_at(3)  # Every aptitude category is the same 60%.
+    ranked = rank_nearby_faculties("ISTJ", aptitude, budget="high")
+    assert len({item["minimum_margin"] for item in ranked}) > 1
+    assert all("average_margin" in item for item in ranked)
