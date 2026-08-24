@@ -130,12 +130,13 @@ def rank_nearby_faculties(
     aptitude: Mapping[str, Mapping[str, int | str]],
     limit: int = 5,
     budget: str | None = None,
+    require_mbti: bool = False,
 ) -> list[dict]:
-    """Rank affordable alternatives with auditable logical precedence, not arbitrary weights."""
+    """Rank affordable alternatives; callers can preserve MBTI as a hard logical constraint."""
     ranked = [
         _evaluate_rule(_rule_to_dict(raw_rule), mbti, aptitude)
         for raw_rule in FACULTY_RULES
-        if is_affordable(raw_rule[4], budget)
+        if is_affordable(raw_rule[4], budget) and (not require_mbti or mbti in raw_rule[2])
     ]
     return sorted(ranked, key=lambda item: (logical_rank_key(item), item["faculty"]), reverse=True)[:limit]
 
