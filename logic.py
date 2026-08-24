@@ -58,31 +58,13 @@ def _rule_to_dict(rule: tuple) -> dict:
     return {"faculty": faculty, "group": group, "mbti_set": mbti_set, "conditions": conditions, "cost": cost}
 
 
-def mbti_compatibility(mbti: str, target_mbti: Sequence[str]) -> int:
-    """ให้คะแนนความใกล้เคียงของ Cognitive Function stacks; MBTI ที่อยู่ในกฎได้ 100%."""
-    if mbti in target_mbti:
-        return 100
-
-    user_stack = MBTI_STACKS[mbti]
-    position_weights = (0.40, 0.30, 0.20, 0.10)
-    best_score = 0.0
-    for candidate in target_mbti:
-        candidate_stack = MBTI_STACKS[candidate]
-        same_position = sum(
-            weight for index, weight in enumerate(position_weights)
-            if user_stack[index] == candidate_stack[index]
-        )
-        shared_functions = len(set(user_stack) & set(candidate_stack)) / 4
-        best_score = max(best_score, (70 * same_position) + (30 * shared_functions))
-    return min(95, round(best_score))
-
-
 def _evaluate_rule(
     rule: Mapping,
     mbti: str,
     aptitude: Mapping[str, Mapping[str, int | str]],
     subject_relaxation: int = 0,
 ) -> dict:
+    """Evaluate a rule without inventing a weighted personality score."""
     conditions = [
         {
             "category": category,
@@ -93,21 +75,31 @@ def _evaluate_rule(
         }
         for category, minimum in rule["conditions"]
     ]
-    subject_compatibility = round(
-        100 * sum(min(1.0, item["actual"] / item["minimum"]) for item in conditions) / len(conditions)
-    )
-    mbti_score = mbti_compatibility(mbti, rule["mbti_set"])
-    compatibility = round((0.45 * mbti_score) + (0.55 * subject_compatibility))
+    subject_average = round(sum(item["actual"] for item in conditions) / len(conditions))
+    minimum_margin = min(item["actual"] - item["effective_minimum"] for item in conditions)
+    passed_conditions = sum(item["passed"] for item in conditions)
     mbti_pass = mbti in rule["mbti_set"]
     return {
         **rule,
         "mbti_pass": mbti_pass,
-        "mbti_compatibility": mbti_score,
-        "subject_compatibility": subject_compatibility,
-        "compatibility": compatibility,
+        "subject_average": subject_average,
+        "minimum_margin": minimum_margin,
+        "passed_conditions": passed_conditions,
+        "total_conditions": len(conditions),
         "condition_results": conditions,
-        "passed": mbti_pass and all(item["passed"] for item in conditions),
+        "passed": mbti_pass and passed_conditions == len(conditions),
     }
+
+
+def logical_rank_key(item: Mapping) -> tuple[int, int, int, int, int]:
+    """Transparent ranking: exact MBTI → all subjects pass → passed count → weakest margin → actual average."""
+    return (
+        int(item["mbti_pass"]),
+        int(item["passed_conditions"] == item["total_conditions"]),
+        int(item["passed_conditions"]),
+        int(item["minimum_margin"]),
+        int(item["subject_average"]),
+    )
 
 
 def match_faculties(
@@ -115,14 +107,15 @@ def match_faculties(
     aptitude: Mapping[str, Mapping[str, int | str]],
     subject_relaxation: int = 0,
 ) -> list[dict]:
-    """ใช้ MBTI ∧ ทุกเกณฑ์วิชา โดยลดเกณฑ์ได้ 0–10 จุดเปอร์เซ็นต์สำหรับ fallback."""
+    """Return strict logical matches, ordered by actual scores relevant to each faculty."""
     if not 0 <= subject_relaxation <= 10:
         raise ValueError("subject_relaxation ต้องอยู่ระหว่าง 0 ถึง 10")
-    return [
+    matches = [
         evaluated
         for raw_rule in FACULTY_RULES
         if (evaluated := _evaluate_rule(_rule_to_dict(raw_rule), mbti, aptitude, subject_relaxation))["passed"]
     ]
+    return sorted(matches, key=lambda item: (logical_rank_key(item), item["faculty"]), reverse=True)
 
 
 def rank_nearby_faculties(
@@ -131,13 +124,13 @@ def rank_nearby_faculties(
     limit: int = 5,
     budget: str | None = None,
 ) -> list[dict]:
-    """เสนอทางเลือกในงบ เรียงด้วย MBTI 45% + ความถนัด 55% เมื่อไม่มีผล strict."""
+    """Rank affordable alternatives with auditable logical precedence, not arbitrary weights."""
     ranked = [
         _evaluate_rule(_rule_to_dict(raw_rule), mbti, aptitude)
         for raw_rule in FACULTY_RULES
         if is_affordable(raw_rule[4], budget)
     ]
-    return sorted(ranked, key=lambda item: (item["compatibility"], item["faculty"]), reverse=True)[:limit]
+    return sorted(ranked, key=lambda item: (logical_rank_key(item), item["faculty"]), reverse=True)[:limit]
 
 
 BUDGET_TIERS = {"low": ("low",), "medium": ("low", "medium"), "high": ("low", "medium", "high")}
