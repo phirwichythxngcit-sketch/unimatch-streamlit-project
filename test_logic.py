@@ -85,12 +85,12 @@ def test_ranked_alternatives_expose_truth_values_without_mbti_similarity_score()
     alternatives = rank_nearby_faculties("ISFP", aptitude_at(5), budget="low")
     assert alternatives and all(item["cost"] == "low" for item in alternatives)
     assert all("condition_results" in item and "subject_average" in item for item in alternatives)
-    assert all("compatibility" not in item for item in alternatives)
+    assert all(0 <= item["compatibility"] <= 100 for item in alternatives)
 
 
 def test_logical_rank_key_prioritizes_mbti_then_subject_truth():
-    exact_mbti = {"mbti_pass": True, "passed_conditions": 0, "total_conditions": 1, "minimum_margin": -50, "average_margin": -50, "subject_average": 10}
-    subject_pass_only = {"mbti_pass": False, "passed_conditions": 1, "total_conditions": 1, "minimum_margin": 50, "average_margin": 50, "subject_average": 100}
+    exact_mbti = {"compatibility": 50, "mbti_pass": True, "passed_conditions": 0, "total_conditions": 1, "minimum_margin": -50, "average_margin": -50, "subject_average": 10}
+    subject_pass_only = {"compatibility": 50, "mbti_pass": False, "passed_conditions": 1, "total_conditions": 1, "minimum_margin": 50, "average_margin": 50, "subject_average": 100}
     assert logical_rank_key(exact_mbti) > logical_rank_key(subject_pass_only)
 
 
@@ -99,3 +99,16 @@ def test_margin_distinguishes_faculties_when_raw_answers_are_the_same():
     ranked = rank_nearby_faculties("ISTJ", aptitude, budget="high")
     assert len({item["minimum_margin"] for item in ranked}) > 1
     assert all("average_margin" in item for item in ranked)
+
+
+def test_compatibility_starts_at_100_and_lowers_for_false_propositions():
+    strict = match_faculties("ISTJ", aptitude_at(5))
+    assert strict and all(item["compatibility"] == 100 for item in strict)
+
+    fallback = rank_nearby_faculties("ISTJ", aptitude_at(1), budget="low")
+    assert fallback
+    assert any(item["compatibility"] < 100 for item in fallback)
+    for item in fallback:
+        true_propositions = int(item["mbti_pass"]) + item["passed_conditions"]
+        total_propositions = 1 + item["total_conditions"]
+        assert item["compatibility"] == round(100 * true_propositions / total_propositions)
