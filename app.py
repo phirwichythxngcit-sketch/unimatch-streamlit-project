@@ -199,13 +199,17 @@ def render_aptitude() -> None:
 
 
 def render_match_details(rule: dict, mbti: str, budget: str | None) -> None:
-    """แสดงประพจน์และส่วนประกอบคะแนนความเข้ากันของคณะหนึ่งรายการ."""
+    """Show the rule, its truth values, and the real score evidence used for ordering."""
     st.code(logic_expression(rule), language="text")
-    st.caption("คะแนนความเข้ากัน = ความสอดคล้อง MBTI 45% + ความสอดคล้องคะแนนวิชา 55%")
-    score_columns = st.columns(3)
-    score_columns[0].metric("ความเข้ากันรวม", f"{rule['compatibility']}%")
-    score_columns[1].metric("MBTI กับคณะ", f"{rule['mbti_compatibility']}%")
-    score_columns[2].metric("คะแนนวิชากับคณะ", f"{rule['subject_compatibility']}%")
+    st.caption(
+        "การเรียงลำดับไม่มีสูตรถ่วงน้ำหนัก: MBTI ตรงตามกฎ → ผ่านเกณฑ์วิชาครบ → "
+        "จำนวนเงื่อนไขวิชาที่ผ่าน → ส่วนต่างจากเกณฑ์ที่ต่ำสุด → ค่าเฉลี่ยคะแนนวิชาที่เกี่ยวข้อง"
+    )
+    score_columns = st.columns(4)
+    score_columns[0].metric("MBTI ตามกฎ", "ผ่าน" if rule["mbti_pass"] else "ไม่ผ่าน")
+    score_columns[1].metric("เงื่อนไขวิชาที่ผ่าน", f"{rule['passed_conditions']} / {rule['total_conditions']}")
+    score_columns[2].metric("ส่วนต่างต่ำสุดจากเกณฑ์", f"{rule['minimum_margin']:+d} จุด")
+    score_columns[3].metric("เฉลี่ยวิชาที่เกี่ยวข้อง", f"{rule['subject_average']}%")
 
     details = []
     for item in rule["condition_results"]:
@@ -219,7 +223,7 @@ def render_match_details(rule: dict, mbti: str, budget: str | None) -> None:
             "เป็นจริง": "จริง" if item["passed"] else "เท็จ",
         })
     st.dataframe(pd.DataFrame(details), hide_index=True, use_container_width=True)
-    mbti_truth = "จริง" if rule["mbti_pass"] else "เท็จ — ใช้คะแนนความใกล้เคียงของ Cognitive Functions เพื่อจัดอันดับ"
+    mbti_truth = "จริง" if rule["mbti_pass"] else "เท็จ"
     st.markdown(f"MBTI: {mbti} ∈ {{{' ∨ '.join(rule['mbti_set'])}}} → **{mbti_truth}**")
     st.markdown(f"**ระดับค่าเรียนของคณะ:** {BUDGET_LABELS[rule['cost']]} ({COST_TIER_RANGES[rule['cost']]})")
     if budget is None:
@@ -382,14 +386,14 @@ def render_summary() -> None:
             st.info("ยังไม่ได้ตอบคำถามทุน/งบประมาณ — เลื่อนไปท้ายหน้าเพื่อตอบ ระบบจะกรองคณะที่ค่าเรียนเกินงบออก")
 
         for index, rule in enumerate(recommended, start=1):
-            with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+            with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                 render_match_details(rule, mbti_result.mbti, budget)
 
         if over_budget:
             st.subheader("คณะที่ผ่านเกณฑ์ strict แต่ค่าเรียนเกินงบ")
             st.caption("รายการนี้ไม่ใช่คำแนะนำหลัก เพราะขัดกับงบที่คุณยืนยัน")
             for index, rule in enumerate(over_budget, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — ต้องการ{BUDGET_LABELS[rule['cost']]}"):
+                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — ต้องการ{BUDGET_LABELS[rule['cost']]}"):
                     render_match_details(rule, mbti_result.mbti, None)
 
         if budget_answered and not recommended:
@@ -397,7 +401,7 @@ def render_summary() -> None:
             st.info("แม้ผล strict ที่ตรงที่สุดจะเกินงบ ระบบจึงลดลำดับเกณฑ์วิชาและ MBTI เป็นคะแนนความเข้ากัน เพื่อค้นหาคณะในงบที่เลือก โดยไม่บังคับให้กู้ยืม")
             nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
             for index, rule in enumerate(nearby, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
             with st.expander("ดูทางเลือกทุน/กยศ. สำหรับคณะที่เกินงบ"):
                 render_financial_aid_suggestion(len(over_budget))
@@ -408,13 +412,13 @@ def render_summary() -> None:
         if relaxed_recommended:
             st.success(f"พบ {len(relaxed_recommended)} คณะจากการผ่อนเกณฑ์วิชา 10% — เป็นผลลัพธ์ใกล้เคียง ไม่ใช่ผล strict")
             for index, rule in enumerate(relaxed_recommended, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]} (ผ่อนเกณฑ์ 10%)", expanded=index <= 3):
+                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]} (ผ่อนเกณฑ์ 10%)", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
         else:
             st.subheader("คณะที่ใกล้เคียงที่สุดภายในงบ")
             nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
             for index, rule in enumerate(nearby, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
             if relaxed_over_budget:
                 with st.expander("ดูทางเลือกทุน/กยศ. สำหรับคณะที่เกินงบ"):
@@ -424,17 +428,24 @@ def render_summary() -> None:
 
     st.divider()
     st.subheader("บันทึกผลเข้าในระบบ")
-    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, limit=1, budget=budget)
-    top_option = save_options[0] if save_options else None
-    if top_option:
-        st.write(f"รายการที่จะบันทึก: **{top_option['faculty']}** — ความเข้ากัน {top_option['compatibility']}%")
+    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
+    if save_options:
+        st.caption("เลือกคณะที่ต้องการบันทึกเอง ระบบไม่บันทึกคณะแรกให้โดยอัตโนมัติ")
+        option_labels = {
+            f"{index}. {item['faculty']} — MBTI {'ผ่าน' if item['mbti_pass'] else 'ไม่ผ่าน'} — "
+            f"วิชาที่ผ่าน {item['passed_conditions']}/{item['total_conditions']} — "
+            f"เฉลี่ย {item['subject_average']}%": item
+            for index, item in enumerate(save_options, start=1)
+        }
+        chosen_label = st.selectbox("คณะที่ต้องการบันทึก", list(option_labels), key="faculty_to_save")
+        chosen_option = option_labels[chosen_label]
         if st.button("บันทึกผลของฉัน", type="primary"):
             try:
                 result_id = save_result(
                     participant_name=st.session_state[PARTICIPANT_NAME_STORE],
                     mbti=mbti_result.mbti,
-                    top_faculty=top_option["faculty"],
-                    compatibility=top_option["compatibility"],
+                    top_faculty=chosen_option["faculty"],
+                    compatibility=chosen_option["subject_average"],
                     budget=BUDGET_LABELS[budget] if budget else None,
                 )
                 st.success(f"บันทึกผลสำเร็จ (รายการ #{result_id}) ดูได้จากเมนู “ประวัติผลลัพธ์”")
@@ -482,7 +493,7 @@ def render_history() -> None:
             "วันเวลา": record["created_at"],
             "MBTI ที่ได้": record["mbti"],
             "คณะอันดับ 1": record["top_faculty"],
-            "ความเข้ากัน": f"{record['compatibility']}%",
+            "เฉลี่ยวิชาที่เกี่ยวข้อง": f"{record['compatibility']}%",
             "งบที่เลือก": record["budget"] or "ยังไม่ระบุ",
         }
         for record in records
