@@ -81,9 +81,11 @@ def _evaluate_rule(
     average_margin = round(sum(margins) / len(margins))
     passed_conditions = sum(item["passed"] for item in conditions)
     mbti_pass = mbti in rule["mbti_set"]
+    compatibility = round(100 * (int(mbti_pass) + passed_conditions) / (1 + len(conditions)))
     return {
         **rule,
         "mbti_pass": mbti_pass,
+        "compatibility": compatibility,
         "subject_average": subject_average,
         "minimum_margin": minimum_margin,
         "average_margin": average_margin,
@@ -94,9 +96,10 @@ def _evaluate_rule(
     }
 
 
-def logical_rank_key(item: Mapping) -> tuple[int, int, int, int, int, int]:
-    """Transparent ranking: exact MBTI → all subjects pass → passed count → weakest margin → average margin → actual average."""
+def logical_rank_key(item: Mapping) -> tuple[int, int, int, int, int, int, int]:
+    """Rank by proposition compatibility, then resolve ties with actual evidence."""
     return (
+        int(item["compatibility"]),
         int(item["mbti_pass"]),
         int(item["passed_conditions"] == item["total_conditions"]),
         int(item["passed_conditions"]),
