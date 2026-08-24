@@ -121,3 +121,14 @@ def test_budget_fallback_can_keep_mbti_as_a_hard_constraint():
 
     unrestricted = rank_nearby_faculties("ISTP", aptitude, budget="low", require_mbti=False)
     assert len(unrestricted) >= len(alternatives)
+
+
+def test_budget_only_fallback_is_available_when_exact_mbti_has_no_affordable_rule():
+    aptitude = aptitude_at(3)
+    exact = rank_nearby_faculties("ISTP", aptitude, budget="low", require_mbti=True)
+    broad = rank_nearby_faculties("ISTP", aptitude, budget="low", require_mbti=False)
+
+    if not exact:
+        budget_only = [item for item in broad if not item["mbti_pass"]]
+        assert budget_only
+        assert all(item["cost"] == "low" and not item["mbti_pass"] for item in budget_only)
