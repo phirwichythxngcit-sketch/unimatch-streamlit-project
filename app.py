@@ -377,6 +377,29 @@ def render_summary() -> None:
     )
     st.dataframe(aptitude_table, use_container_width=True, hide_index=True)
 
+    with st.expander("อธิบายคะแนนความถนัด: ทำไมจึงเป็น 60%?"):
+        st.markdown(
+            f"""
+แต่ละหมวดความถนัดมี **{APTITUDE_QUESTION_COUNT} ข้อ** แต่ละข้อให้คะแนน 1–5
+จึงมีคะแนนเต็มหมวดละ `{APTITUDE_QUESTION_COUNT} × 5 = {APTITUDE_MAX_SCORE}` คะแนน
+
+ระบบคำนวณด้วยสูตร:
+
+`เปอร์เซ็นต์ความถนัด = (ผลรวมคะแนนคำตอบในหมวด ÷ {APTITUDE_MAX_SCORE}) × 100`
+
+ตัวอย่าง หากตอบระดับ **3 จาก 5 ทุกข้อ**:
+
+`(3 × {APTITUDE_QUESTION_COUNT} ÷ {APTITUDE_MAX_SCORE}) × 100 = 60%`
+
+ดังนั้น 60% ไม่ได้หมายความว่า “เหมาะกับทุกคณะ 60%” แต่เป็นเพียงคะแนนดิบของหมวดนั้น
+เช่น M = 60% หมายถึงผลรวมคำตอบหมวดคณิตศาสตร์/คอมพิวเตอร์ได้ 60 จาก 100
+
+**ต่างจากความเข้ากันตามประพจน์:** คะแนนความเข้ากันของคณะคำนวณจากจำนวนเงื่อนไขที่เป็นจริง
+เช่น `MBTI ∧ M > 55% ∧ S > 35%` มี 3 ประพจน์ หากจริงครบจะได้ 100%;
+หากจริง 2 ข้อจะได้ 67% และจริง 1 ข้อจะได้ 33%.
+            """
+        )
+
     st.divider()
     budget = render_budget_question()
     budget_answered = budget is not None
