@@ -203,13 +203,14 @@ def render_match_details(rule: dict, mbti: str, budget: str | None) -> None:
     st.code(logic_expression(rule), language="text")
     st.caption(
         "การเรียงลำดับไม่มีสูตรถ่วงน้ำหนัก: MBTI ตรงตามกฎ → ผ่านเกณฑ์วิชาครบ → "
-        "จำนวนเงื่อนไขวิชาที่ผ่าน → ส่วนต่างจากเกณฑ์ที่ต่ำสุด → ค่าเฉลี่ยคะแนนวิชาที่เกี่ยวข้อง"
+        "จำนวนเงื่อนไขวิชาที่ผ่าน → ส่วนต่างจากเกณฑ์ที่ต่ำสุด → ส่วนต่างเฉลี่ย → ค่าเฉลี่ยคะแนนวิชาที่เกี่ยวข้อง"
     )
-    score_columns = st.columns(4)
+    score_columns = st.columns(5)
     score_columns[0].metric("MBTI ตามกฎ", "ผ่าน" if rule["mbti_pass"] else "ไม่ผ่าน")
     score_columns[1].metric("เงื่อนไขวิชาที่ผ่าน", f"{rule['passed_conditions']} / {rule['total_conditions']}")
     score_columns[2].metric("ส่วนต่างต่ำสุดจากเกณฑ์", f"{rule['minimum_margin']:+d} จุด")
-    score_columns[3].metric("เฉลี่ยวิชาที่เกี่ยวข้อง", f"{rule['subject_average']}%")
+    score_columns[3].metric("ส่วนต่างเฉลี่ยจากเกณฑ์", f"{rule['average_margin']:+d} จุด")
+    score_columns[4].metric("เฉลี่ยวิชาที่เกี่ยวข้อง", f"{rule['subject_average']}%")
 
     details = []
     for item in rule["condition_results"]:
@@ -261,23 +262,25 @@ def render_financial_aid_suggestion(count: int) -> None:
     st.caption("หากได้ทุนหรือกู้ยืมจนรับค่าเรียนระดับสูงได้ สามารถกลับมาเลือก “งบมาก” ในคำถามด้านล่าง ระบบจะแนะนำคณะเหล่านี้ให้ทันที")
 
 
-def render_budget_question() -> None:
-    """คำถามทุน/งบประมาณวางไว้หลังสรุปคณะ เพื่อใช้กรองผลลัพธ์ที่แสดงด้านบน."""
-    st.divider()
-    st.subheader("ส่วนสุดท้าย — ทุนและงบประมาณของคุณ")
-    st.write("เลือกระดับเงินที่รับได้ต่อเทอม ระบบจะแนะนำเฉพาะคณะที่ค่าเรียนอยู่ในงบของคุณ เช่น คณะแพทยศาสตร์ (ค่าเรียนระดับสูง) จะถูกแนะนำก็ต่อเมื่อเลือก “งบมาก”")
+def render_budget_question() -> str | None:
+    """Render budget first, then return it so the current run filters results immediately."""
+    st.subheader("ทุนและงบประมาณของคุณ")
+    st.write("เลือกระดับเงินที่รับได้ต่อเทอม ระบบจะใช้เป็นเงื่อนไขก่อนจัดอันดับคณะ")
+    tiers = ["low", "medium", "high"]
     choice = st.radio(
         "คุณมีทุนหรือเงินสำหรับค่าใช้จ่ายทางการศึกษาต่อเทอมอยู่ประมาณไหน?",
-        options=["low", "medium", "high"],
+        options=tiers,
         format_func=lambda item: {
             "low": "งบน้อย — รับได้ประมาณ 10,000–18,000 บาท/เทอม",
             "medium": "งบปานกลาง — รับได้ประมาณ 18,000–30,000 บาท/เทอม",
             "high": "งบมาก — รับได้ถึงหลักสูตรค่าใช้จ่ายสูง (30,000–60,000+ บาท/เทอม)",
         }[item],
-        index=None if st.session_state.budget is None else ["low", "medium", "high"].index(st.session_state.budget),
+        index=None if st.session_state.budget is None else tiers.index(st.session_state.budget),
+        key="budget_choice",
     )
     if choice is not None:
         st.session_state.budget = choice
+    return choice
 
 def render_mbti_explanation(result, scores: dict[str, int]) -> None:
     dominant, auxiliary, tertiary, inferior = result.stack
@@ -373,9 +376,10 @@ def render_summary() -> None:
     )
     st.dataframe(aptitude_table, use_container_width=True, hide_index=True)
 
-    matches = match_faculties(mbti_result.mbti, aptitude)
-    budget = st.session_state.budget
+    st.divider()
+    budget = render_budget_question()
     budget_answered = budget is not None
+    matches = match_faculties(mbti_result.mbti, aptitude)
     recommended, over_budget = split_matches_by_budget(matches, budget)
 
     st.subheader("คณะที่ผ่านประพจน์ทั้งหมด")
@@ -386,7 +390,7 @@ def render_summary() -> None:
             st.info("ยังไม่ได้ตอบคำถามทุน/งบประมาณ — เลื่อนไปท้ายหน้าเพื่อตอบ ระบบจะกรองคณะที่ค่าเรียนเกินงบออก")
 
         for index, rule in enumerate(recommended, start=1):
-            with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+            with st.expander(f"{index}. {rule['faculty']} — เหนือเกณฑ์ต่ำสุด {rule['minimum_margin']:+d} จุด — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                 render_match_details(rule, mbti_result.mbti, budget)
 
         if over_budget:
@@ -424,8 +428,6 @@ def render_summary() -> None:
                 with st.expander("ดูทางเลือกทุน/กยศ. สำหรับคณะที่เกินงบ"):
                     render_financial_aid_suggestion(len(relaxed_over_budget))
 
-    render_budget_question()
-
     st.divider()
     st.subheader("บันทึกผลเข้าในระบบ")
     save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
@@ -434,7 +436,7 @@ def render_summary() -> None:
         option_labels = {
             f"{index}. {item['faculty']} — MBTI {'ผ่าน' if item['mbti_pass'] else 'ไม่ผ่าน'} — "
             f"วิชาที่ผ่าน {item['passed_conditions']}/{item['total_conditions']} — "
-            f"เฉลี่ย {item['subject_average']}%": item
+            f"เหนือเกณฑ์ต่ำสุด {item['minimum_margin']:+d} จุด": item
             for index, item in enumerate(save_options, start=1)
         }
         chosen_label = st.selectbox("คณะที่ต้องการบันทึก", list(option_labels), key="faculty_to_save")
