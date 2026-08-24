@@ -76,7 +76,9 @@ def _evaluate_rule(
         for category, minimum in rule["conditions"]
     ]
     subject_average = round(sum(item["actual"] for item in conditions) / len(conditions))
-    minimum_margin = min(item["actual"] - item["effective_minimum"] for item in conditions)
+    margins = [item["actual"] - item["effective_minimum"] for item in conditions]
+    minimum_margin = min(margins)
+    average_margin = round(sum(margins) / len(margins))
     passed_conditions = sum(item["passed"] for item in conditions)
     mbti_pass = mbti in rule["mbti_set"]
     return {
@@ -84,6 +86,7 @@ def _evaluate_rule(
         "mbti_pass": mbti_pass,
         "subject_average": subject_average,
         "minimum_margin": minimum_margin,
+        "average_margin": average_margin,
         "passed_conditions": passed_conditions,
         "total_conditions": len(conditions),
         "condition_results": conditions,
@@ -91,13 +94,14 @@ def _evaluate_rule(
     }
 
 
-def logical_rank_key(item: Mapping) -> tuple[int, int, int, int, int]:
-    """Transparent ranking: exact MBTI → all subjects pass → passed count → weakest margin → actual average."""
+def logical_rank_key(item: Mapping) -> tuple[int, int, int, int, int, int]:
+    """Transparent ranking: exact MBTI → all subjects pass → passed count → weakest margin → average margin → actual average."""
     return (
         int(item["mbti_pass"]),
         int(item["passed_conditions"] == item["total_conditions"]),
         int(item["passed_conditions"]),
         int(item["minimum_margin"]),
+        int(item["average_margin"]),
         int(item["subject_average"]),
     )
 
