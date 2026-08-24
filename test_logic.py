@@ -1,7 +1,7 @@
 from data import APTITUDE_CATEGORIES, FUNCTION_ORDER, MBTI_STACKS
 from logic import (
     aptitude_summary, derive_mbti, is_affordable, match_faculties, rank_nearby_faculties,
-    split_matches_by_budget, university_options, verify_rule_set, mbti_compatibility,
+    split_matches_by_budget, university_options, verify_rule_set, logical_rank_key,
 )
 
 
@@ -71,26 +71,24 @@ def test_subject_relaxation_is_limited_and_respects_budget():
     assert nearby and all(item["cost"] == "low" for item in nearby)
 
 
-def test_compatibility_uses_mbti_and_subject_components():
+def test_logical_ranking_prefers_real_subject_evidence_after_rules_are_true():
     aptitude = aptitude_at(5)
-    matched = match_faculties("ISTJ", aptitude)
-    medicine = next(item for item in matched if item["faculty"] == "แพทยศาสตร์")
-    assert medicine["mbti_compatibility"] == 100
-    assert medicine["subject_compatibility"] == 100
-    assert medicine["compatibility"] == 100
+    aptitude["S"]["percent"] = 70
+    ranked = match_faculties("ISTJ", aptitude)
+
+    assert ranked == sorted(ranked, key=lambda item: (logical_rank_key(item), item["faculty"]), reverse=True)
+    assert all(item["mbti_pass"] for item in ranked)
+    assert all(item["passed_conditions"] == item["total_conditions"] for item in ranked)
 
 
-def test_low_budget_gets_ranked_in_budget_alternatives_when_strict_matches_cost_more():
-    aptitude = aptitude_at(5)
-    strict = match_faculties("ISFP", aptitude)
-    affordable, over_budget = split_matches_by_budget(strict, "low")
-    assert not affordable and over_budget
-    alternatives = rank_nearby_faculties("ISFP", aptitude, budget="low")
-    assert alternatives
-    assert all(item["cost"] == "low" for item in alternatives)
-    assert all("condition_results" in item and "compatibility" in item for item in alternatives)
+def test_ranked_alternatives_expose_truth_values_without_mbti_similarity_score():
+    alternatives = rank_nearby_faculties("ISFP", aptitude_at(5), budget="low")
+    assert alternatives and all(item["cost"] == "low" for item in alternatives)
+    assert all("condition_results" in item and "subject_average" in item for item in alternatives)
+    assert all("compatibility" not in item for item in alternatives)
 
 
-def test_mbti_compatibility_is_full_for_a_type_in_the_rule_and_bounded_otherwise():
-    assert mbti_compatibility("INTP", ["INTP", "ENTP"]) == 100
-    assert 0 <= mbti_compatibility("INTP", ["ESFJ"]) <= 95
+def test_logical_rank_key_prioritizes_mbti_then_subject_truth():
+    exact_mbti = {"mbti_pass": True, "passed_conditions": 0, "total_conditions": 1, "minimum_margin": -50, "subject_average": 10}
+    subject_pass_only = {"mbti_pass": False, "passed_conditions": 1, "total_conditions": 1, "minimum_margin": 50, "subject_average": 100}
+    assert logical_rank_key(exact_mbti) > logical_rank_key(subject_pass_only)
