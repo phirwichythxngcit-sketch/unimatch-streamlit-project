@@ -350,6 +350,32 @@ Auxiliary (Aux), Tertiary (Tert) และ Inferior (Inf) ระบบเลื�
             )
 
 
+
+def budget_only_alternatives(mbti: str, aptitude: dict, budget: str | None) -> list[dict]:
+    """Return affordable choices that are close in subject conditions but fail the MBTI proposition."""
+    return [
+        item
+        for item in rank_nearby_faculties(mbti, aptitude, budget=budget, require_mbti=False)
+        if not item["mbti_pass"]
+    ]
+
+
+def render_budget_only_alternatives(mbti: str, aptitude: dict, budget: str | None) -> list[dict]:
+    alternatives = budget_only_alternatives(mbti, aptitude, budget)
+    st.subheader("ทางเลือกที่ตรงงบ แต่ MBTI ไม่ตรง")
+    st.warning(
+        "รายการนี้อยู่ในงบและเรียงจากประพจน์วิชาที่ผ่าน แต่ประพจน์ MBTI เป็นเท็จ "
+        "จึงเป็นเพียงทางเลือกด้านงบประมาณ ไม่ใช่ผลที่ผ่านตรรกศาสตร์ strict"
+    )
+    for index, rule in enumerate(alternatives, start=1):
+        with st.expander(
+            f"{index}. {rule['faculty']} — ความเข้ากันตามประพจน์ {rule['compatibility']}% — "
+            f"MBTI ไม่ผ่าน — {BUDGET_LABELS[rule['cost']]}",
+            expanded=index <= 3,
+        ):
+            render_match_details(rule, mbti, budget)
+    return alternatives
+
 def render_summary() -> None:
     st.title("ส่วนสรุป — ประพจน์ คณะที่ตรงเงื่อนไข และการเชื่อมกับทุน")
     if not (st.session_state.cognitive_done and st.session_state.aptitude_done):
@@ -428,8 +454,10 @@ def render_summary() -> None:
             st.subheader("ทางเลือกในงบที่ MBTI ตรงตามกฎ")
             st.info("แม้ผล strict ที่ตรงที่สุดจะเกินงบ ระบบจึงผ่อนเฉพาะเกณฑ์วิชาและคง MBTI เป็นเงื่อนไขบังคับ เพื่อค้นหาคณะในงบที่เลือก โดยไม่บังคับให้กู้ยืม")
             nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget, require_mbti=True)
+            budget_only = []
             if not nearby:
-                st.warning("ไม่พบคณะในงบที่เลือกซึ่งมี MBTI ตรงตามกฎ ระบบจึงไม่แสดงคณะที่ MBTI ไม่ตรงเป็นคำแนะนำ")
+                st.info("ไม่พบคณะในงบที่เลือกซึ่งมี MBTI ตรงตามกฎ จึงแสดงทางเลือกตามงบประมาณแยกด้านล่าง")
+                budget_only = render_budget_only_alternatives(mbti_result.mbti, aptitude, budget)
             for index, rule in enumerate(nearby, start=1):
                 with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
@@ -447,8 +475,10 @@ def render_summary() -> None:
         else:
             st.subheader("คณะที่ใกล้เคียงที่สุดในงบ โดย MBTI ต้องตรงตามกฎ")
             nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget, require_mbti=True)
+            budget_only = []
             if not nearby:
-                st.warning("ไม่พบคณะในงบที่เลือกซึ่งมี MBTI ตรงตามกฎ ระบบจึงไม่แสดงคณะที่ MBTI ไม่ตรงเป็นคำแนะนำ")
+                st.info("ไม่พบคณะในงบที่เลือกซึ่งมี MBTI ตรงตามกฎ จึงแสดงทางเลือกตามงบประมาณแยกด้านล่าง")
+                budget_only = render_budget_only_alternatives(mbti_result.mbti, aptitude, budget)
             for index, rule in enumerate(nearby, start=1):
                 with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
@@ -458,9 +488,9 @@ def render_summary() -> None:
 
     st.divider()
     st.subheader("บันทึกผลเข้าในระบบ")
-    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget, require_mbti=True)
+    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget, require_mbti=True) or budget_only_alternatives(mbti_result.mbti, aptitude, budget)
     if save_options:
-        st.caption("เลือกคณะที่ต้องการบันทึกเอง ระบบไม่บันทึกคณะแรกให้โดยอัตโนมัติ")
+        st.caption("เลือกคณะที่ต้องการบันทึกเอง ระบบไม่บันทึกคณะแรกให้โดยอัตโนมัติ; หากเลือกทางเลือกตามงบ ระบบจะบันทึกสถานะ MBTI ไม่ผ่านไว้ในรายการที่เลือก")
         option_labels = {
             f"{index}. {item['faculty']} — MBTI {'ผ่าน' if item['mbti_pass'] else 'ไม่ผ่าน'} — "
             f"วิชาที่ผ่าน {item['passed_conditions']}/{item['total_conditions']} — "
