@@ -202,15 +202,16 @@ def render_match_details(rule: dict, mbti: str, budget: str | None) -> None:
     """Show the rule, its truth values, and the real score evidence used for ordering."""
     st.code(logic_expression(rule), language="text")
     st.caption(
-        "การเรียงลำดับไม่มีสูตรถ่วงน้ำหนัก: MBTI ตรงตามกฎ → ผ่านเกณฑ์วิชาครบ → "
-        "จำนวนเงื่อนไขวิชาที่ผ่าน → ส่วนต่างจากเกณฑ์ที่ต่ำสุด → ส่วนต่างเฉลี่ย → ค่าเฉลี่ยคะแนนวิชาที่เกี่ยวข้อง"
+        "ความเข้ากัน = (จำนวนประพจน์ที่เป็นจริง ÷ จำนวนประพจน์ทั้งหมด) × 100; "
+        "นับประพจน์ MBTI 1 ข้อ และประพจน์วิชาทุกข้อเท่า ๆ กัน จึงเริ่มที่ 100% และลดลงเมื่อข้อใดเป็นเท็จ"
     )
-    score_columns = st.columns(5)
-    score_columns[0].metric("MBTI ตามกฎ", "ผ่าน" if rule["mbti_pass"] else "ไม่ผ่าน")
-    score_columns[1].metric("เงื่อนไขวิชาที่ผ่าน", f"{rule['passed_conditions']} / {rule['total_conditions']}")
-    score_columns[2].metric("ส่วนต่างต่ำสุดจากเกณฑ์", f"{rule['minimum_margin']:+d} จุด")
-    score_columns[3].metric("ส่วนต่างเฉลี่ยจากเกณฑ์", f"{rule['average_margin']:+d} จุด")
-    score_columns[4].metric("เฉลี่ยวิชาที่เกี่ยวข้อง", f"{rule['subject_average']}%")
+    score_columns = st.columns(6)
+    score_columns[0].metric("ความเข้ากันตามประพจน์", f"{rule['compatibility']}%")
+    score_columns[1].metric("MBTI ตามกฎ", "ผ่าน" if rule["mbti_pass"] else "ไม่ผ่าน")
+    score_columns[2].metric("เงื่อนไขวิชาที่ผ่าน", f"{rule['passed_conditions']} / {rule['total_conditions']}")
+    score_columns[3].metric("ส่วนต่างต่ำสุดจากเกณฑ์", f"{rule['minimum_margin']:+d} จุด")
+    score_columns[4].metric("ส่วนต่างเฉลี่ยจากเกณฑ์", f"{rule['average_margin']:+d} จุด")
+    score_columns[5].metric("เฉลี่ยวิชาที่เกี่ยวข้อง", f"{rule['subject_average']}%")
 
     details = []
     for item in rule["condition_results"]:
@@ -390,7 +391,7 @@ def render_summary() -> None:
             st.info("ยังไม่ได้ตอบคำถามทุน/งบประมาณ — เลื่อนไปท้ายหน้าเพื่อตอบ ระบบจะกรองคณะที่ค่าเรียนเกินงบออก")
 
         for index, rule in enumerate(recommended, start=1):
-            with st.expander(f"{index}. {rule['faculty']} — เหนือเกณฑ์ต่ำสุด {rule['minimum_margin']:+d} จุด — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+            with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                 render_match_details(rule, mbti_result.mbti, budget)
 
         if over_budget:
@@ -436,7 +437,7 @@ def render_summary() -> None:
         option_labels = {
             f"{index}. {item['faculty']} — MBTI {'ผ่าน' if item['mbti_pass'] else 'ไม่ผ่าน'} — "
             f"วิชาที่ผ่าน {item['passed_conditions']}/{item['total_conditions']} — "
-            f"เหนือเกณฑ์ต่ำสุด {item['minimum_margin']:+d} จุด": item
+            f"ความเข้ากัน {item['compatibility']}%": item
             for index, item in enumerate(save_options, start=1)
         }
         chosen_label = st.selectbox("คณะที่ต้องการบันทึก", list(option_labels), key="faculty_to_save")
@@ -447,7 +448,7 @@ def render_summary() -> None:
                     participant_name=st.session_state[PARTICIPANT_NAME_STORE],
                     mbti=mbti_result.mbti,
                     top_faculty=chosen_option["faculty"],
-                    compatibility=chosen_option["subject_average"],
+                    compatibility=chosen_option["compatibility"],
                     budget=BUDGET_LABELS[budget] if budget else None,
                 )
                 st.success(f"บันทึกผลสำเร็จ (รายการ #{result_id}) ดูได้จากเมนู “ประวัติผลลัพธ์”")
@@ -495,7 +496,7 @@ def render_history() -> None:
             "วันเวลา": record["created_at"],
             "MBTI ที่ได้": record["mbti"],
             "คณะอันดับ 1": record["top_faculty"],
-            "เฉลี่ยวิชาที่เกี่ยวข้อง": f"{record['compatibility']}%",
+            "ความเข้ากันตามประพจน์": f"{record['compatibility']}%",
             "งบที่เลือก": record["budget"] or "ยังไม่ระบุ",
         }
         for record in records
