@@ -112,3 +112,12 @@ def test_compatibility_starts_at_100_and_lowers_for_false_propositions():
         true_propositions = int(item["mbti_pass"]) + item["passed_conditions"]
         total_propositions = 1 + item["total_conditions"]
         assert item["compatibility"] == round(100 * true_propositions / total_propositions)
+
+
+def test_budget_fallback_can_keep_mbti_as_a_hard_constraint():
+    aptitude = aptitude_at(3)
+    alternatives = rank_nearby_faculties("ISTP", aptitude, budget="low", require_mbti=True)
+    assert all(item["mbti_pass"] for item in alternatives)
+
+    unrestricted = rank_nearby_faculties("ISTP", aptitude, budget="low", require_mbti=False)
+    assert len(unrestricted) >= len(alternatives)
