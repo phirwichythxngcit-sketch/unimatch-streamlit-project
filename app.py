@@ -421,15 +421,17 @@ def render_summary() -> None:
             st.subheader("คณะที่ผ่านเกณฑ์ strict แต่ค่าเรียนเกินงบ")
             st.caption("รายการนี้ไม่ใช่คำแนะนำหลัก เพราะขัดกับงบที่คุณยืนยัน")
             for index, rule in enumerate(over_budget, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — ต้องการ{BUDGET_LABELS[rule['cost']]}"):
+                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — ต้องการ{BUDGET_LABELS[rule['cost']]}"):
                     render_match_details(rule, mbti_result.mbti, None)
 
         if budget_answered and not recommended:
-            st.subheader("ทางเลือกที่อยู่ในงบของคุณ")
-            st.info("แม้ผล strict ที่ตรงที่สุดจะเกินงบ ระบบจึงลดลำดับเกณฑ์วิชาและ MBTI เป็นคะแนนความเข้ากัน เพื่อค้นหาคณะในงบที่เลือก โดยไม่บังคับให้กู้ยืม")
-            nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
+            st.subheader("ทางเลือกในงบที่ MBTI ตรงตามกฎ")
+            st.info("แม้ผล strict ที่ตรงที่สุดจะเกินงบ ระบบจึงผ่อนเฉพาะเกณฑ์วิชาและคง MBTI เป็นเงื่อนไขบังคับ เพื่อค้นหาคณะในงบที่เลือก โดยไม่บังคับให้กู้ยืม")
+            nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget, require_mbti=True)
+            if not nearby:
+                st.warning("ไม่พบคณะในงบที่เลือกซึ่งมี MBTI ตรงตามกฎ ระบบจึงไม่แสดงคณะที่ MBTI ไม่ตรงเป็นคำแนะนำ")
             for index, rule in enumerate(nearby, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
             with st.expander("ดูทางเลือกทุน/กยศ. สำหรับคณะที่เกินงบ"):
                 render_financial_aid_suggestion(len(over_budget))
@@ -440,13 +442,15 @@ def render_summary() -> None:
         if relaxed_recommended:
             st.success(f"พบ {len(relaxed_recommended)} คณะจากการผ่อนเกณฑ์วิชา 10% — เป็นผลลัพธ์ใกล้เคียง ไม่ใช่ผล strict")
             for index, rule in enumerate(relaxed_recommended, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]} (ผ่อนเกณฑ์ 10%)", expanded=index <= 3):
+                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]} (ผ่อนเกณฑ์ 10%)", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
         else:
-            st.subheader("คณะที่ใกล้เคียงที่สุดภายในงบ")
-            nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
+            st.subheader("คณะที่ใกล้เคียงที่สุดในงบ โดย MBTI ต้องตรงตามกฎ")
+            nearby = rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget, require_mbti=True)
+            if not nearby:
+                st.warning("ไม่พบคณะในงบที่เลือกซึ่งมี MBTI ตรงตามกฎ ระบบจึงไม่แสดงคณะที่ MBTI ไม่ตรงเป็นคำแนะนำ")
             for index, rule in enumerate(nearby, start=1):
-                with st.expander(f"{index}. {rule['faculty']} — เฉลี่ยวิชาที่เกี่ยวข้อง {rule['subject_average']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
+                with st.expander(f"{index}. {rule['faculty']} — ความเข้ากัน {rule['compatibility']}% — {BUDGET_LABELS[rule['cost']]}", expanded=index <= 3):
                     render_match_details(rule, mbti_result.mbti, budget)
             if relaxed_over_budget:
                 with st.expander("ดูทางเลือกทุน/กยศ. สำหรับคณะที่เกินงบ"):
@@ -454,7 +458,7 @@ def render_summary() -> None:
 
     st.divider()
     st.subheader("บันทึกผลเข้าในระบบ")
-    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget)
+    save_options = recommended or rank_nearby_faculties(mbti_result.mbti, aptitude, budget=budget, require_mbti=True)
     if save_options:
         st.caption("เลือกคณะที่ต้องการบันทึกเอง ระบบไม่บันทึกคณะแรกให้โดยอัตโนมัติ")
         option_labels = {
